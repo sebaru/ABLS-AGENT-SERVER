@@ -1,5 +1,5 @@
 /******************************************************************************************************************************/
-/* ABLS-AGENT-SERVER/server.c  Template agent server                                                                         */
+/* ABLS-AGENT-SERVER/server.c  Template agent server                                                                          */
 /* Projet Abls-Habitat                   Gestion d'habitat                                                17.07.2026 12:00:00 */
 /* Auteur: LEFEVRE Sebastien                                                                                                  */
 /******************************************************************************************************************************/
@@ -27,23 +27,74 @@
 
 #include "server.h"
 
-gint main(gint argc, gchar *argv[]) {
-  struct ABLS_AGENT *agent =
-      Agent_init(argv[0], "server", ABLS_AGENT_SERVER_VERSION,
-                 sizeof(struct ABLS_SERVER_VARS), argc, argv);
-  struct ABLS_SERVER_VARS *vars = agent->vars;
+/******************************************************************************************************************************/
+/* main: Prend en charge l'agent                                                                                              */
+/* Entrée: argc, argv                                                                                                         */
+/* Sortie: aucune                                                                                                             */
+/******************************************************************************************************************************/
+ gint main(gint argc, gchar *argv[])
+  { gchar *hostname = g_utf8_strup ( g_get_host_name(), -1 );                 /* Le tech_id d'un agent server est son hostname */
+    setenv ( "ABLS_AGENT_TECH_ID", hostname, 1 );
+    g_free ( hostname );
+    struct ABLS_AGENT *agent = Agent_init ( argv[0], "server", ABLS_AGENT_SERVER_VERSION, sizeof(struct ABLS_SERVER_VARS), argc, argv );
+    struct ABLS_AGENT_VARS *vars = agent->vars;
 
-  vars->initialized = TRUE;
+    Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/INSTALL", agent->server_uuid );    /* Pour installer les agents sur le server */
+    Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/UPGRADE", agent->domain_uuid );
+    Mqtt_subscribe ( agent->mqtt_api, "%s/CLASS/+/UPGRADE", agent->domain_uuid );
+    Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/RESTART", agent->domain_uuid );
+    Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/STOP",    agent->domain_uuid );
+    Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/START",   agent->domain_uuid );
 
-  while (agent->Agent_run == AGENT_IS_RUNNING) {
-    Agent_loop(agent);
-
-    /* Template hook: consume MQTT/config messages and add server-specific logic here. */
-    JsonNode *mqtt_local_message;
-    while ((mqtt_local_message = Mqtt_get_message(agent->mqtt_local)) != NULL) {
-      Json_unref(mqtt_local_message);
-    }
+    while(agent->Agent_run == AGENT_IS_RUNNING)                                              /* On tourne tant que necessaire */
+     { Agent_loop ( agent );                                             /* Loop sur l'agent pour mettre a jour la telemetrie */
+/****************************************************** Ecoute du master ******************************************************/
+       JsonNode *mqtt_local_message;
+       while ( (mqtt_local_message = Mqtt_get_message ( agent->mqtt_local ) ) != NULL )
+        { Json_unref ( mqtt_local_message );
+        }
+/****************************************************** Ecoute de l'api *******************************************************/
+       JsonNode *mqtt_api_message;
+       while ( (mqtt_api_message = Agent_get_mqtt_api_message ( agent ) ) != NULL )
+        { gchar *target = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl2" );
+          if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "STOP" ) )
+           { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE, "API is asking to STOP %s", target );
+           }
+          else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "RESTART" ) )
+           { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE, "API is asking to RESTART %s", target );
+           }
+          else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "UPGRADE" ) )
+           { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE, "API is asking to UPGRADE %s", target );
+             gint new_pid = fork();
+             if (new_pid<0)
+              { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_WARNING, "Fils: UPGRADE: Fork Error" ); }
+             else if (!new_pid)
+              { gchar chaine[256];
+                g_snprintf ( chaine, sizeof(chaine), "sudo dnf upgrade abls-agent-%s", agent->agent_classe );
+                system(chaine);
+                Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_WARNING, "Fils: UPGRADE: done. Restarting." );
+                agent->Agent_run = AGENT_NEED_TO_RESTART;                                                  /* Stop old processes */
+                exit(0);
+              }
+           }
+          else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "CLASS", "+", "UPGRADE" ) )
+           { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE, "API is asking to upgrade class %s", target );
+             /*gint new_pid = fork();
+             if (new_pid<0)
+              { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_WARNING, "Fils: UPGRADE: Fork Error" ); }
+             else if (!new_pid)
+              { gchar chaine[256];
+                g_snprintf ( chaine, sizeof(chaine), "sudo dnf upgrade abls-agent-%s", agent->agent_classe );
+                system(chaine);
+                Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_WARNING, "Fils: UPGRADE: done. Restarting." );
+                agent->Agent_run = AGENT_NEED_TO_RESTART;                                                  /* Stop old processes */
+                exit(0);
+              /*} */
+           }
+         Json_unref (mqtt_api_message);
+        }
+     }
+end:
+    Agent_end(agent);
   }
-
-  Agent_end(agent);
-}
+/*----------------------------------------------------------------------------------------------------------------------------*/

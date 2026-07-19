@@ -30,9 +30,9 @@
 
 #include <abls-agent-libs/abls-agent-libs.h>
 
-struct ABLS_SERVER_VARS {
-  gboolean initialized;
-};
+struct ABLS_SERVER_VARS
+ { gboolean initialized;
+ };
 
 #endif
 /*----------------------------------------------------------------------------------------------------------------------------*/
