@@ -56,26 +56,60 @@
 /****************************************************** Ecoute de l'api *******************************************************/
        JsonNode *mqtt_api_message;
        while ( (mqtt_api_message = Agent_get_mqtt_api_message ( agent ) ) != NULL )
-        { gchar *target = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl2" );
+        { gchar chaine[256];
+          gchar *target = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl2" );
+          gchar *classe = Json_get_string ( mqtt_api_message, "agent_classe" );
           if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "STOP" ) )
-           { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE, "API is asking to STOP %s", target );
+           { if(classe)
+              { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
+                      "API is asking to STOP %s (class %s)", target, classe );
+                g_snprintf ( chaine, sizeof(chaine), "sudo systemctl stop abls-agent-%s@%s", agent->agent_classe, target );
+                system(chaine);
+              }
+             else
+              { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
+                      "API is asking to STOP %s, but classe not provided", target );
+              }
            }
           else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "RESTART" ) )
-           { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE, "API is asking to RESTART %s", target );
+           { if(classe)
+              { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
+                      "API is asking to RESTART %s (class %s)", target, classe );
+                g_snprintf ( chaine, sizeof(chaine), "sudo systemctl restart abls-agent-%s@%s", agent->agent_classe, target );
+                system(chaine);
+              }
+             else
+              { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
+                      "API is asking to RESTART %s, but classe not provided", target );
+              }
            }
           else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "UPGRADE" ) )
-           { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE, "API is asking to UPGRADE %s", target );
-             gint new_pid = fork();
+           { if(classe)
+              { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
+                      "API is asking to UPGRADE %s (class %s)", target, classe );
+                g_snprintf ( chaine, sizeof(chaine), "sudo dnf upgrade abls-agent-%s", agent->agent_classe );
+                system(chaine);
+                g_snprintf ( chaine, sizeof(chaine), "sudo systemctl restart abls-agent-%s@%s", agent->agent_classe, target );
+                system(chaine);
+              }
+             else
+              { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
+                      "API is asking to UPGRADE %s, but classe not provided", target );
+              }
+
+/*            gint new_pid = fork();
              if (new_pid<0)
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_WARNING, "Fils: UPGRADE: Fork Error" ); }
              else if (!new_pid)
-              { gchar chaine[256];
-                g_snprintf ( chaine, sizeof(chaine), "sudo dnf upgrade abls-agent-%s", agent->agent_classe );
+              { g_snprintf ( chaine, sizeof(chaine), "sudo dnf upgrade abls-agent-%s", agent->agent_classe );
                 system(chaine);
                 Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_WARNING, "Fils: UPGRADE: done. Restarting." );
-                agent->Agent_run = AGENT_NEED_TO_RESTART;                                                  /* Stop old processes */
-                exit(0);
-              }
+                g_snprintf ( chaine, sizeof(chaine), "sudo systemctl restart abls-agent-%s", agent->agent_classe );
+                system(chaine);
+                Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_WARNING, "Fils: UPGRADE: done. Restarting." );
+              /*agent->Agent_run = AGENT_NEED_TO_RESTART;                                                  /* Stop old processes */
+  /*              exit(0);
+              }*/
            }
           else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "CLASS", "+", "UPGRADE" ) )
            { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE, "API is asking to upgrade class %s", target );

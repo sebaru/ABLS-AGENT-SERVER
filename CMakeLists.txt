@@ -64,6 +64,22 @@ install(TARGETS abls-agent-server
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
 )
 
+execute_process(
+  COMMAND pkg-config --variable=systemdsystemunitdir systemd
+  OUTPUT_VARIABLE ABLS_SYSTEMD_UNIT_INSTALL_DIR
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
+)
+
+if(NOT ABLS_SYSTEMD_UNIT_INSTALL_DIR)
+  set(ABLS_SYSTEMD_UNIT_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/lib/systemd/system")
+endif()
+
+install(FILES packaging/systemd/abls-agent-server.service
+  DESTINATION ${ABLS_SYSTEMD_UNIT_INSTALL_DIR}
+  COMPONENT runtime
+)
+
 set(CPACK_PACKAGE_NAME "abls-agent-server")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_RELEASE "1")
