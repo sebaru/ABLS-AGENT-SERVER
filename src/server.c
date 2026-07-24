@@ -37,7 +37,7 @@
     setenv ( "ABLS_AGENT_TECH_ID", hostname, 1 );
     g_free ( hostname );
     struct ABLS_AGENT *agent = Agent_init ( argv[0], "server", ABLS_AGENT_SERVER_VERSION, sizeof(struct ABLS_SERVER_VARS), argc, argv );
-    struct ABLS_AGENT_VARS *vars = agent->vars;
+    /*struct ABLS_AGENT_VARS *vars = agent->vars;*/
 
     Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/INSTALL", agent->server_uuid );    /* Pour installer les agents sur le server */
     Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/UPGRADE", agent->domain_uuid );
@@ -63,8 +63,8 @@
            { if(classe)
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to STOP %s (class %s)", target, classe );
-                g_snprintf ( chaine, sizeof(chaine), "sudo systemctl stop abls-agent-%s@%s", agent->agent_classe, target );
-                system(chaine);
+                g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", agent->agent_classe, target );
+                Exec_sudo ( "systemctl", "stop", chaine, NULL );
               }
              else
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
@@ -75,9 +75,8 @@
            { if(classe)
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to RESTART %s (class %s)", target, classe );
-                g_snprintf ( chaine, sizeof(chaine), "sudo systemctl restart abls-agent-%s@%s", agent->agent_classe, target );
-                system(chaine);
-              }
+                g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", agent->agent_classe, target );
+                Exec_sudo ( "systemctl", "restart", chaine, NULL );}
              else
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to RESTART %s, but classe not provided", target );
@@ -87,48 +86,24 @@
            { if(classe)
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to UPGRADE %s (class %s)", target, classe );
-                g_snprintf ( chaine, sizeof(chaine), "sudo dnf upgrade abls-agent-%s", agent->agent_classe );
-                system(chaine);
-                g_snprintf ( chaine, sizeof(chaine), "sudo systemctl restart abls-agent-%s@%s", agent->agent_classe, target );
-                system(chaine);
+                g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", agent->agent_classe, target );
+                Exec_sudo ( "dnf", "upgrade", chaine, "-y", NULL );
+                Exec_sudo ( "systemctl", "restart", chaine, NULL );
               }
              else
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to UPGRADE %s, but classe not provided", target );
               }
-
-/*            gint new_pid = fork();
-             if (new_pid<0)
-              { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_WARNING, "Fils: UPGRADE: Fork Error" ); }
-             else if (!new_pid)
-              { g_snprintf ( chaine, sizeof(chaine), "sudo dnf upgrade abls-agent-%s", agent->agent_classe );
-                system(chaine);
-                Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_WARNING, "Fils: UPGRADE: done. Restarting." );
-                g_snprintf ( chaine, sizeof(chaine), "sudo systemctl restart abls-agent-%s", agent->agent_classe );
-                system(chaine);
-                Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_WARNING, "Fils: UPGRADE: done. Restarting." );
-              /*agent->Agent_run = AGENT_NEED_TO_RESTART;                                                  /* Stop old processes */
-  /*              exit(0);
-              }*/
            }
           else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "CLASS", "+", "UPGRADE" ) )
            { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE, "API is asking to upgrade class %s", target );
-             /*gint new_pid = fork();
-             if (new_pid<0)
-              { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_WARNING, "Fils: UPGRADE: Fork Error" ); }
-             else if (!new_pid)
-              { gchar chaine[256];
-                g_snprintf ( chaine, sizeof(chaine), "sudo dnf upgrade abls-agent-%s", agent->agent_classe );
-                system(chaine);
-                Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_WARNING, "Fils: UPGRADE: done. Restarting." );
-                agent->Agent_run = AGENT_NEED_TO_RESTART;                                                  /* Stop old processes */
-                exit(0);
-              /*} */
+             g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", target );
+             Exec_sudo ( "dnf", "upgrade", chaine, "-y", NULL );
            }
          Json_unref (mqtt_api_message);
         }
      }
-end:
+
     Agent_end(agent);
   }
 /*----------------------------------------------------------------------------------------------------------------------------*/
