@@ -36,7 +36,7 @@
   { gchar *hostname = g_utf8_strup ( g_get_host_name(), -1 );                 /* Le tech_id d'un agent server est son hostname */
     setenv ( "ABLS_AGENT_TECH_ID", hostname, 1 );
     g_free ( hostname );
-    struct ABLS_AGENT *agent = Agent_init ( argv[0], "server", ABLS_AGENT_SERVER_VERSION, sizeof(struct ABLS_SERVER_VARS), argc, argv );
+    struct ABLS_AGENT *agent = Agent_init ( argv[0], "servers", ABLS_AGENT_SERVER_VERSION, sizeof(struct ABLS_SERVER_VARS), argc, argv );
     /*struct ABLS_AGENT_VARS *vars = agent->vars;*/
 
     Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/INSTALL", agent->server_uuid );    /* Pour installer les agents sur le server */
