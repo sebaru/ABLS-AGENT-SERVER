@@ -39,12 +39,14 @@
     struct ABLS_AGENT *agent = Agent_init ( argv[0], "servers", ABLS_AGENT_SERVER_VERSION, sizeof(struct ABLS_SERVER_VARS), argc, argv );
     /*struct ABLS_AGENT_VARS *vars = agent->vars;*/
 
-    Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/INSTALL", agent->server_uuid );    /* Pour installer les agents sur le server */
+    Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/INSTALL", agent->domain_uuid );    /* Pour installer les agents sur le server */
     Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/UPGRADE", agent->domain_uuid );
     Mqtt_subscribe ( agent->mqtt_api, "%s/CLASS/+/UPGRADE", agent->domain_uuid );
     Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/RESTART", agent->domain_uuid );
     Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/STOP",    agent->domain_uuid );
     Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/START",   agent->domain_uuid );
+
+    Agent_is_ready ( agent );
 
     while(agent->Agent_run == AGENT_IS_RUNNING)                                              /* On tourne tant que necessaire */
      { Agent_loop ( agent );                                             /* Loop sur l'agent pour mettre a jour la telemetrie */
@@ -100,7 +102,8 @@
              g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", target );
              Exec_sudo ( "dnf", "upgrade", chaine, "-y", NULL );
            }
-         Json_unref (mqtt_api_message);
+          else Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE, "API sent unknown command %s", Json_get_string ( mqtt_api_message, "mqtt_topic" ) );
+          Json_unref (mqtt_api_message);
         }
      }
 
