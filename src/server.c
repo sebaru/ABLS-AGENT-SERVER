@@ -41,7 +41,6 @@
 
     Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/INSTALL", agent->domain_uuid );    /* Pour installer les agents sur le server */
     Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/UPGRADE", agent->domain_uuid );
-    Mqtt_subscribe ( agent->mqtt_api, "%s/CLASS/+/UPGRADE", agent->domain_uuid );
     Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/RESTART", agent->domain_uuid );
     Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/STOP",    agent->domain_uuid );
     Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/START",   agent->domain_uuid );
@@ -71,12 +70,33 @@
                  }
                 else
                  { g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
-                   Exec_sudo ( "systemctl", "stop", chaine, NULL );
+                   Exec_sudo ( "systemctl", "disable", "--now", chaine, NULL );
                  }
               }
              else
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to STOP %s, but classe not provided", target );
+              }
+           }
+          else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "START" ) )
+           { if(classe)
+              { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
+                      "API is asking to START %s (class %s)", target, classe );
+                if (g_strcmp0 ( target, agent->agent_tech_id ) == 0)
+                 { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_ERR,
+                         "Cannot self start this agent-server. keep Running." );
+                 }
+                else
+                 { g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", classe);
+                   gchar *path = g_find_program_in_path(chaine);
+                   if (!path) Exec_sudo ( (agent->is_debian ? "apt" : "dnf"), "install", chaine, NULL );
+                   g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
+                   Exec_sudo ( "systemctl", "enable", "--now", chaine, NULL );
+                 }
+              }
+             else
+              { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
+                      "API is asking to START %s, but classe not provided", target );
               }
            }
           else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "RESTART" ) )
@@ -94,19 +114,15 @@
            { if(classe)
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to UPGRADE %s (class %s)", target, classe );
+                g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", classe );
+                Exec_sudo ( (agent->is_debian ? "apt" : "dnf"), (agent->is_debian ? "update" : "upgrade"), chaine, "-y", NULL );
                 g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
-                Exec_sudo ( "dnf", "upgrade", chaine, "-y", NULL );
                 Exec_sudo ( "systemctl", "restart", chaine, NULL );
               }
              else
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to UPGRADE %s, but classe not provided", target );
               }
-           }
-          else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "CLASS", "+", "UPGRADE" ) )
-           { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE, "API is asking to upgrade class %s", target );
-             g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", classe );
-             Exec_sudo ( "dnf", "upgrade", chaine, "-y", NULL );
            }
           else Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE, "API sent unknown command %s", Json_get_string ( mqtt_api_message, "mqtt_topic" ) );
           Json_unref (mqtt_api_message);
