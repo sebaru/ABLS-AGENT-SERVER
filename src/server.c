@@ -33,10 +33,10 @@
 /* Sortie: aucune                                                                                                             */
 /******************************************************************************************************************************/
  gint main(gint argc, gchar *argv[])
-  { gchar *hostname = g_utf8_strup ( g_get_host_name(), -1 );                 /* Le tech_id d'un agent server est son hostname */
+  { gchar *hostname = g_utf8_strup ( g_get_host_name(), -1 );                /* Le tech_id d'un agent server est son hostname */
     setenv ( "ABLS_AGENT_TECH_ID", hostname, 1 );
     g_free ( hostname );
-    struct ABLS_AGENT *agent = Agent_init ( argv[0], "servers", ABLS_AGENT_SERVER_VERSION, sizeof(struct ABLS_SERVER_VARS), argc, argv );
+    struct ABLS_AGENT *agent = Agent_init ( argv[0], "server", ABLS_AGENT_SERVER_VERSION, sizeof(struct ABLS_SERVER_VARS), argc, argv );
     /*struct ABLS_AGENT_VARS *vars = agent->vars;*/
 
     Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/INSTALL", agent->domain_uuid );    /* Pour installer les agents sur le server */
@@ -65,8 +65,14 @@
            { if(classe)
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to STOP %s (class %s)", target, classe );
-                g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", agent->agent_classe, target );
-                Exec_sudo ( "systemctl", "stop", chaine, NULL );
+                if (g_strcmp0 ( target, agent->agent_tech_id ) == 0)
+                 { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_ERR,
+                         "Cannot self stop this agent-server. keep Running." );
+                 }
+                else
+                 { g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
+                   Exec_sudo ( "systemctl", "stop", chaine, NULL );
+                 }
               }
              else
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
@@ -77,7 +83,7 @@
            { if(classe)
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to RESTART %s (class %s)", target, classe );
-                g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", agent->agent_classe, target );
+                g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
                 Exec_sudo ( "systemctl", "restart", chaine, NULL );}
              else
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
@@ -88,7 +94,7 @@
            { if(classe)
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to UPGRADE %s (class %s)", target, classe );
-                g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", agent->agent_classe, target );
+                g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
                 Exec_sudo ( "dnf", "upgrade", chaine, "-y", NULL );
                 Exec_sudo ( "systemctl", "restart", chaine, NULL );
               }
@@ -99,7 +105,7 @@
            }
           else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "CLASS", "+", "UPGRADE" ) )
            { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE, "API is asking to upgrade class %s", target );
-             g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", target );
+             g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", classe );
              Exec_sudo ( "dnf", "upgrade", chaine, "-y", NULL );
            }
           else Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE, "API sent unknown command %s", Json_get_string ( mqtt_api_message, "mqtt_topic" ) );
