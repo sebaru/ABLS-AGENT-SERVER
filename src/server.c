@@ -60,6 +60,7 @@
         { gchar chaine[256];
           gchar *target = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl2" );
           gchar *classe = Json_get_string ( mqtt_api_message, "agent_classe" );
+/*------------------------------------------------------------ Stop ----------------------------------------------------------*/
           if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "STOP" ) )
            { if(classe)
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
@@ -78,6 +79,7 @@
                       "API is asking to STOP %s, but classe not provided", target );
               }
            }
+/*------------------------------------------------------------ Start ---------------------------------------------------------*/
           else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "START" ) )
            { if(classe)
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
@@ -89,7 +91,11 @@
                 else
                  { g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", classe);
                    gchar *path = g_find_program_in_path(chaine);
-                   if (!path) Exec_sudo ( (agent->is_debian ? "apt" : "dnf"), "install", chaine, NULL );
+                   if (!path)
+                    { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
+                           "package '%s' not found. Install in progress.", chaine );
+                      Exec_sudo ( (agent->is_debian ? "apt" : "dnf"), "install", chaine, NULL );
+                    } else g_free(path);
                    g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
                    Exec_sudo ( "systemctl", "enable", "--now", chaine, NULL );
                  }
@@ -99,6 +105,7 @@
                       "API is asking to START %s, but classe not provided", target );
               }
            }
+/*------------------------------------------------------------ Restart -------------------------------------------------------*/
           else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "RESTART" ) )
            { if(classe)
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
