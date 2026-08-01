@@ -28,6 +28,44 @@
 #include "server.h"
 
 /******************************************************************************************************************************/
+/* Start_one_agent: Installe et demarre un agent classe/tech_id en parametre                                                  */
+/* Entrée: agent, agent_classe, agent_tech_id                                                                                 */
+/* Sortie: aucune                                                                                                             */
+/******************************************************************************************************************************/
+ static void Start_one_agent ( struct ABLS_AGENT *agent, gchar *agent_classe, gchar *agent_tech_id )
+  { if (!agent || !agent_classe || !agent_tech_id) return;
+    Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE, "Starting %s (class %s)", agent_tech_id, agent_classe );
+    if (g_strcmp0 ( agent_tech_id, agent->agent_tech_id ) == 0)
+     { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_ERR,
+                       "Cannot self start this agent-server. Dropping." );
+       return;
+     }
+    gchar chaine[256];
+    g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", agent_classe);
+    gchar *path = g_find_program_in_path(chaine);
+    if (!path)
+     { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
+            "package '%s' not found. Install in progress.", chaine );
+       Exec_sudo ( (agent->is_debian ? "apt" : "dnf"), "install", chaine, NULL );
+     } else g_free(path);
+    g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", agent_classe, agent_tech_id );
+    Exec_sudo ( "systemctl", "enable", "--now", chaine, NULL );
+    Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE, "%s (class %s) started", agent_tech_id, agent_classe );
+  }
+/******************************************************************************************************************************/
+/* Start_agents_by_array: Installe et demarre les agents contenus dans un tableau JSON                                        */
+/* Entrée: array, index, element, user_data                                                                                   */
+/* Sortie: aucune                                                                                                             */
+/******************************************************************************************************************************/
+ static void Start_agents_by_array ( JsonArray *array, guint index, JsonNode *element, gpointer user_data )
+  { if (!array || !element || !user_data) return;
+    struct ABLS_AGENT *agent = user_data;
+    gchar *agent_classe  = Json_get_string ( element, "agent_classe" );
+    gchar *agent_tech_id = Json_get_string ( element, "agent_tech_id" );
+    if (agent_classe && agent_tech_id)
+     { Start_one_agent ( agent, agent_classe, agent_tech_id ); }
+  }
+/******************************************************************************************************************************/
 /* main: Prend en charge l'agent                                                                                              */
 /* Entrée: argc, argv                                                                                                         */
 /* Sortie: aucune                                                                                                             */
@@ -46,6 +84,11 @@
     Mqtt_subscribe ( agent->mqtt_api, "%s/AGENT/+/START",   agent->domain_uuid );
 
     Agent_is_ready ( agent );
+
+    /* Demarrage des agents locaux a activer */
+    Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
+          "Starting %d local_agents", Json_array_get_length(agent->api_config, "local_agents") );
+    Json_foreach_array_element ( agent->api_config, "local_agents", Start_agents_by_array, agent );
 
     while(agent->Agent_run == AGENT_IS_RUNNING)                                              /* On tourne tant que necessaire */
      { Agent_loop ( agent );                                             /* Loop sur l'agent pour mettre a jour la telemetrie */
@@ -81,25 +124,7 @@
            }
 /*------------------------------------------------------------ Start ---------------------------------------------------------*/
           else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "START" ) )
-           { if(classe)
-              { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
-                      "API is asking to START %s (class %s)", target, classe );
-                if (g_strcmp0 ( target, agent->agent_tech_id ) == 0)
-                 { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_ERR,
-                         "Cannot self start this agent-server. keep Running." );
-                 }
-                else
-                 { g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", classe);
-                   gchar *path = g_find_program_in_path(chaine);
-                   if (!path)
-                    { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
-                           "package '%s' not found. Install in progress.", chaine );
-                      Exec_sudo ( (agent->is_debian ? "apt" : "dnf"), "install", chaine, NULL );
-                    } else g_free(path);
-                   g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
-                   Exec_sudo ( "systemctl", "enable", "--now", chaine, NULL );
-                 }
-              }
+           { if(classe) Start_one_agent ( agent, classe, target );
              else
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to START %s, but classe not provided", target );
@@ -117,6 +142,7 @@
                       "API is asking to RESTART %s, but classe not provided", target );
               }
            }
+/*------------------------------------------------------------ Upgrade -------------------------------------------------------*/
           else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "UPGRADE" ) )
            { if(classe)
               { Info( __func__, agent->agent_classe, agent->agent_tech_id, LOG_NOTICE,
