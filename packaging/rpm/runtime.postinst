@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+# Creation du groupe abls
+if ! getent group abls >/dev/null 2>&1; then
+  groupadd abls || true
+fi
+
+if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  if systemctl is-active --quiet abls-agent-server.service 2>/dev/null; then
+    systemctl try-restart abls-agent-server.service >/dev/null 2>&1 || true
+  fi
+fi
+
+exit 0

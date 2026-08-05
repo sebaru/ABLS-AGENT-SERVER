@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+  if systemctl is-active --quiet abls-agent-server.service 2>/dev/null; then
+    systemctl try-stop abls-agent-server.service >/dev/null 2>&1 || true
+  fi
+fi
+
+exit 0

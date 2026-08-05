@@ -94,8 +94,12 @@ set(CPACK_DEB_COMPONENT_INSTALL ON)
 set(CPACK_COMPONENTS_ALL runtime)
 
 set(CPACK_RPM_RUNTIME_PACKAGE_NAME "abls-agent-server")
+set(CPACK_RPM_RUNTIME_PACKAGE_GROUP "abls")
 set(CPACK_RPM_RUNTIME_PACKAGE_SUMMARY "Abls-Habitat Server runtime")
 set(CPACK_RPM_RUNTIME_PACKAGE_REQUIRES "glib2, json-glib, abls-libs, abls-agent-libs")
+set(CPACK_RPM_RUNTIME_POST_INSTALL_SCRIPT_FILE "${CMAKE_SOURCE_DIR}/packaging/rpm/runtime.postinst")
+set(CPACK_RPM_RUNTIME_PRE_UNINSTALL_SCRIPT_FILE "${CMAKE_SOURCE_DIR}/packaging/rpm/runtime.preun")
+set(CPACK_RPM_RUNTIME_POST_UNINSTALL_SCRIPT_FILE "${CMAKE_SOURCE_DIR}/packaging/rpm/runtime.postun")
 set(CPACK_RPM_RUNTIME_FILE_NAME "abls-agent-server-${PROJECT_VERSION}-${CPACK_PACKAGE_RELEASE}.rpm")
 set(CPACK_RPM_RUNTIME_DEBUGINFO_PACKAGE ON)
 set(CPACK_RPM_RUNTIME_DEBUGINFO_FILE_NAME "RPM-DEFAULT")
@@ -104,5 +108,10 @@ set(CPACK_RPM_RUNTIME_BUILD_SOURCE_DIRS_PREFIX "/usr/src/debug")
 set(CPACK_DEBIAN_RUNTIME_PACKAGE_NAME "abls-agent-server")
 set(CPACK_DEBIAN_RUNTIME_PACKAGE_DEPENDS "libglib2.0-0, libjson-glib-1.0-0, abls-libs, abls-agent-libs")
 set(CPACK_DEBIAN_RUNTIME_PACKAGE_SHLIBDEPS ON)
+set(CPACK_DEBIAN_RUNTIME_PACKAGE_CONTROL_EXTRA
+  "${CMAKE_SOURCE_DIR}/packaging/deb/postinst"
+  "${CMAKE_SOURCE_DIR}/packaging/deb/prerm"
+  "${CMAKE_SOURCE_DIR}/packaging/deb/postrm"
+)
 
 include(CPack)
