@@ -35,6 +35,28 @@ pkg_check_modules(ABLS_AGENT_LIBS REQUIRED abls-agent-libs)
 
 add_executable(abls-agent-server
   src/server.c
+  src/dls.c
+  src/plugins.c
+  src/heure.c
+  src/map.c
+  src/The_dls_AI.c
+  src/The_dls_AO.c
+  src/The_dls_BI.c
+  src/The_dls_CH.c
+  src/The_dls_CI.c
+  src/The_dls_DI.c
+  src/The_dls_DO.c
+  src/The_dls_HORLOGE.c
+  src/The_dls_MESSAGE.c
+  src/The_dls_MONO.c
+  src/The_dls_REGISTRE.c
+  src/The_dls_TEMPO.c
+  src/The_dls_VISUEL.c
+  src/The_dls_WATCHDOG.c
+  src/archive.c
+  src/The_dls_data.c
+  src/distrib_outputs.c
+  src/distrib_messages.c
 )
 
 target_include_directories(abls-agent-server PRIVATE

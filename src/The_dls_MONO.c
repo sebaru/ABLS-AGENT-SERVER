@@ -1,0 +1,157 @@
+/******************************************************************************************************************************/
+/* ABLS-AGENT-DLS/src/The_dls_MONO.c        Déclaration des fonctions pour la gestion des booleans                                 */
+/* Projet Abls-Habitat version 4.7       Gestion d'habitat                                                24.06.2019 22:07:06 */
+/* Auteur: LEFEVRE Sebastien                                                                                                  */
+/******************************************************************************************************************************/
+/*
+ * The_dls_MONO.c
+ * This file is part of Abls-Habitat
+ *
+ * Copyright (C) 1988-2026 - Sébastien LEFÈVRE
+ *
+ * ABLS-AGENT-DLS is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * ABLS-AGENT-DLS is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with ABLS-AGENT-DLS; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor,
+ * Boston, MA  02110-1301  USA
+ */
+
+ #include "dls.h"
+
+/******************************************************************************************************************************/
+/* Dls_data_MONO_create_by_array : Création d'un MONO pour le plugin                                                          */
+/* Entrée : l'acronyme, le tech_id et le pointeur de raccourci                                                                */
+/******************************************************************************************************************************/
+ void Dls_data_MONO_create_by_array ( JsonArray *array, guint index, JsonNode *element, gpointer user_data )
+  { struct DLS_PLUGIN *plugin = user_data;
+    gchar *tech_id  = Json_get_string ( element, "tech_id" );
+    gchar *acronyme = Json_get_string ( element, "acronyme" );
+    struct DLS_MONO *bit = g_try_malloc0 ( sizeof(struct DLS_MONO) );
+    if (!bit)
+    { Info( __func__, "dls", plugin->tech_id, LOG_ERR, "Memory error for '%s:%s'", tech_id, acronyme );
+       return;
+     }
+    g_snprintf( bit->tech_id,  sizeof(bit->tech_id),  "%s", tech_id );
+    g_snprintf( bit->acronyme, sizeof(bit->acronyme), "%s", acronyme );
+    g_snprintf( bit->libelle,  sizeof(bit->libelle),  "%s", Json_get_string ( element, "libelle" ) );
+    bit->etat = Json_get_bool ( element, "etat" );
+    plugin->Dls_data_MONO = g_slist_prepend ( plugin->Dls_data_MONO, bit );
+    Info( __func__, "dls", plugin->tech_id, LOG_INFO,
+              "Create bit DLS_MONO '%s:%s'=%d (%s)", bit->tech_id, bit->acronyme, bit->etat, bit->libelle );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_MONO_lookup: Recherche un MONO dans les plugins DLS                                                               */
+/* Entrée: le tech_id, l'acronyme                                                                                             */
+/* Sortie : Néant                                                                                                             */
+/******************************************************************************************************************************/
+ struct DLS_MONO *Dls_data_MONO_lookup ( gchar *tech_id, gchar *acronyme )
+  { if (!(tech_id && acronyme)) return(NULL);
+    GSList *plugins = Agent_vars->Dls_plugins;
+    while (plugins)
+     { struct DLS_PLUGIN *plugin = plugins->data;
+       if (!strcasecmp( plugin->tech_id, tech_id ))
+        { GSList *liste = plugin->Dls_data_MONO;
+          while (liste)
+           { struct DLS_MONO *bit = liste->data;
+             if ( !strcasecmp ( bit->acronyme, acronyme ) ) return(bit);
+             liste = g_slist_next(liste);
+           }
+        }
+       plugins = g_slist_next(plugins);
+     }
+    return(NULL);
+  }
+/******************************************************************************************************************************/
+/* Dls_data_MONO_set: Positionne un monostable                                                                                */
+/* Sortie : TRUE sur le boolean est UP                                                                                        */
+/******************************************************************************************************************************/
+ void Dls_data_MONO_set ( struct DLS_PLUGIN *plugin, struct DLS_MONO *mono, gboolean valeur )
+  { if(!mono) return;
+    if (mono->etat == TRUE && valeur == FALSE)                                                            /* Front descendant */
+     { mono->etat = FALSE;
+       Agent_vars->Set_Dls_MONO_Edge_down = g_slist_prepend ( Agent_vars->Set_Dls_MONO_Edge_down, mono );
+     }
+    else if (mono->etat == FALSE && valeur == TRUE)                                                          /* Front montant */
+     { mono->etat = TRUE;
+       Agent_vars->Set_Dls_MONO_Edge_up   = g_slist_prepend ( Agent_vars->Set_Dls_MONO_Edge_up, mono );
+     }
+    else return; /* Pas de modification, on arrete la */
+    Info( __func__, "dls", mono->tech_id, LOG_DEBUG,
+              "ligne %04d: Changing DLS_MONO '%s:%s'=%d",
+              (plugin ? plugin->num_ligne : -1), mono->tech_id, mono->acronyme, mono->etat );
+    if ( (plugin && plugin->debug) ||
+         g_str_has_prefix ( mono->acronyme, "MEMSA_DEFAUT" ) ||
+         g_str_has_prefix ( mono->acronyme, "MEMSSB_VEILLE" ) ||
+         g_str_has_prefix ( mono->acronyme, "MEMSSB_ALERTE" ) ||
+         g_str_has_prefix ( mono->acronyme, "MEMSSP_DERANGEMENT" ) ||
+         g_str_has_prefix ( mono->acronyme, "MEMSSP_DANGER" ) )
+     { Dls_MONO_report_to_API ( mono ); }
+    Agent_vars->audit_bit_interne_per_sec++;
+  }
+/******************************************************************************************************************************/
+/* Dls_data_MONO_get: Remonte l'etat d'un monostable                                                                          */
+/* Sortie : TRUE sur le boolean est UP                                                                                        */
+/******************************************************************************************************************************/
+ gboolean Dls_data_MONO_get ( struct DLS_MONO *mono )
+  { if (!mono) return(FALSE);
+    /* Test 24/04/2023: Etat = etat|edge_up.  */
+    /* 20/06/2023: mauvaise idée. retour arrière + impose set_mono only within one dls */
+    return( mono->etat );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_MONO_get_up: Remonte le front montant d'un boolean                                                                */
+/* Sortie : TRUE sur le boolean vient de passer à UP                                                                          */
+/******************************************************************************************************************************/
+ gboolean Dls_data_MONO_get_up ( struct DLS_MONO *mono )
+  { if (!mono) return(FALSE);
+    return( mono->edge_up );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_MONO_get_down: Remonte le front descendant d'un boolean                                                           */
+/* Sortie : TRUE sur le boolean vient de passer à DOWN                                                                        */
+/******************************************************************************************************************************/
+ gboolean Dls_data_MONO_get_down ( struct DLS_MONO *mono )
+  { if (!mono) return(FALSE);
+    return( mono->edge_down );
+  }
+/******************************************************************************************************************************/
+/* Dls_all_MONO_to_json: Transforme tous les bits en JSON                                                                     */
+/* Entrée: target                                                                                                             */
+/* Sortie: néant                                                                                                              */
+/******************************************************************************************************************************/
+ void Dls_all_MONO_to_json ( gpointer array, struct DLS_PLUGIN *plugin )
+  { JsonArray *RootArray = array;
+    GSList *liste = plugin->Dls_data_MONO;
+    while ( liste )
+     { struct DLS_MONO *bit = liste->data;
+       JsonNode *element = Json_create();
+       Json_add_string ( element, "tech_id",  bit->tech_id );
+       Json_add_string ( element, "acronyme", bit->acronyme );
+       Json_add_bool   ( element, "etat",     bit->etat );
+       Json_array_add_element ( RootArray, element );
+       liste = g_slist_next(liste);
+     }
+  }
+/******************************************************************************************************************************/
+/* Dls_MONO_report_to_API : Formate un bit au format JSON                                                                     */
+/* Entrées: le JsonNode et le bit                                                                                             */
+/* Sortie : néant                                                                                                             */
+/******************************************************************************************************************************/
+ void Dls_MONO_report_to_API ( struct DLS_MONO *bit )
+  { JsonNode *element = Json_create ();
+    if (element)
+     { Json_add_bool   ( element, "etat",     bit->etat );
+       Agent_send_mqtt_api_message ( Agent, element, TRUE, "DLS_REPORT/MONO/%s/%s", bit->tech_id, bit->acronyme );
+       Json_unref      ( element );
+     }
+  }
+/*----------------------------------------------------------------------------------------------------------------------------*/

@@ -1,0 +1,129 @@
+/******************************************************************************************************************************/
+/* ABLS-AGENT-DLS/src/The_dls_REGITRE.c              Déclaration des fonctions pour la gestion des registre.c                      */
+/* Projet Abls-Habitat version 4.7       Gestion d'habitat                                                22.03.2017 10:29:53 */
+/* Auteur: LEFEVRE Sebastien                                                                                                  */
+/******************************************************************************************************************************/
+/*
+ * The_dls_REGISTRE.c
+ * This file is part of Abls-Habitat
+ *
+ * Copyright (C) 1988-2026 - Sébastien LEFÈVRE
+ *
+ * ABLS-AGENT-DLS is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * ABLS-AGENT-DLS is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with ABLS-AGENT-DLS; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor,
+ * Boston, MA  02110-1301  USA
+ */
+
+ #include "dls.h"
+
+/******************************************************************************************************************************/
+/* Dls_data_REGISTRE_create_by_array : Création d'un REGISTRE pour le plugin                                                  */
+/* Entrée : l'acronyme, le tech_id et le pointeur de raccourci                                                                */
+/******************************************************************************************************************************/
+ void Dls_data_REGISTRE_create_by_array ( JsonArray *array, guint index, JsonNode *element, gpointer user_data )
+  { struct DLS_PLUGIN *plugin = user_data;
+    gchar *tech_id  = Json_get_string ( element, "tech_id" );
+    gchar *acronyme = Json_get_string ( element, "acronyme" );
+    struct DLS_REGISTRE *bit = g_try_malloc0 ( sizeof(struct DLS_REGISTRE) );
+    if (!bit)
+    { Info( __func__, "dls", plugin->tech_id, LOG_ERR, "Memory error for '%s:%s'", tech_id, acronyme );
+       return;
+     }
+    g_snprintf( bit->tech_id,  sizeof(bit->tech_id),  "%s", tech_id );
+    g_snprintf( bit->acronyme, sizeof(bit->acronyme), "%s", acronyme );
+    g_snprintf( bit->libelle,  sizeof(bit->libelle),  "%s", Json_get_string ( element, "libelle" ) );
+    g_snprintf( bit->unite,    sizeof(bit->unite),    "%s", Json_get_string ( element, "unite" ) );
+    bit->valeur    = Json_get_double ( element, "valeur" );
+    bit->archivage = Json_get_int    ( element, "archivage" );
+    plugin->Dls_data_REGISTRE = g_slist_prepend ( plugin->Dls_data_REGISTRE, bit );
+    Info( __func__, "dls", plugin->tech_id, LOG_INFO,
+              "Create bit DLS_REGISTRE '%s:%s'=%f (%s)", bit->tech_id, bit->acronyme, bit->valeur, bit->libelle );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_REGISTRE_lookup: Recherche un REGISTRE dans les plugins DLS                                                       */
+/* Entrée: le tech_id, l'acronyme                                                                                             */
+/* Sortie : Néant                                                                                                             */
+/******************************************************************************************************************************/
+ struct DLS_REGISTRE *Dls_data_REGISTRE_lookup ( gchar *tech_id, gchar *acronyme )
+  { if (!(tech_id && acronyme)) return(NULL);
+    GSList *plugins = Agent_vars->Dls_plugins;
+    while (plugins)
+     { struct DLS_PLUGIN *plugin = plugins->data;
+       if (!strcasecmp( plugin->tech_id, tech_id ))
+        { GSList *liste = plugin->Dls_data_REGISTRE;
+          while (liste)
+           { struct DLS_REGISTRE *bit = liste->data;
+             if ( !strcasecmp ( bit->acronyme, acronyme ) ) return(bit);
+             liste = g_slist_next(liste);
+           }
+        }
+       plugins = g_slist_next(plugins);
+     }
+    return(NULL);
+  }
+/******************************************************************************************************************************/
+/* Dls_data_REGISTRE_set: Positionne un registre                                                                              */
+/* Sortie : néant                                                                                                             */
+/******************************************************************************************************************************/
+ void Dls_data_REGISTRE_set ( struct DLS_PLUGIN *plugin, struct DLS_REGISTRE *registre, gdouble valeur )
+  { if (!registre) return;
+    if (valeur != registre->valeur)
+     { registre->valeur = valeur;
+      if (plugin && plugin->debug) Dls_REGISTRE_report_to_API ( registre );
+      Info( __func__, "dls", registre->tech_id, LOG_DEBUG,
+                 "ligne %04d: Changing DLS_REGISTRE '%s:%s'=%f",
+                 (plugin ? plugin->num_ligne : -1), registre->tech_id, registre->acronyme, registre->valeur );
+       Agent_vars->audit_bit_interne_per_sec++;
+     }
+  }
+/******************************************************************************************************************************/
+/* Dls_data_REGISTRE_get: Remonte la valeur d'un registre                                                                     */
+/* Sortie : la valeur double du registre                                                                                      */
+/******************************************************************************************************************************/
+ gdouble Dls_data_REGISTRE_get ( struct DLS_REGISTRE *reg )
+  { if (!reg) return(0.0);
+    return( reg->valeur );
+  }
+/******************************************************************************************************************************/
+/* Dls_all_REGISTRE_to_json: Transforme tous les bits en JSON                                                                 */
+/* Entrée: target                                                                                                             */
+/* Sortie: néant                                                                                                              */
+/******************************************************************************************************************************/
+ void Dls_all_REGISTRE_to_json ( gpointer array, struct DLS_PLUGIN *plugin )
+  { JsonArray *RootArray = array;
+    GSList *liste = plugin->Dls_data_REGISTRE;
+    while ( liste )
+     { struct DLS_REGISTRE *bit = liste->data;
+       JsonNode *element = Json_create();
+       Json_add_string ( element, "tech_id",   bit->tech_id );
+       Json_add_string ( element, "acronyme",  bit->acronyme );
+       Json_add_double ( element, "valeur",    bit->valeur );
+       Json_array_add_element ( RootArray, element );
+       liste = g_slist_next(liste);
+     }
+  }
+/******************************************************************************************************************************/
+/* Dls_REGISTRE_report_to_API : Formate un bit au format JSON                                                                 */
+/* Entrées: le JsonNode et le bit                                                                                             */
+/* Sortie : néant                                                                                                             */
+/******************************************************************************************************************************/
+ void Dls_REGISTRE_report_to_API ( struct DLS_REGISTRE *bit )
+  { JsonNode *element = Json_create ();
+    if (element)
+     { Json_add_double ( element, "valeur", bit->valeur );
+       Agent_send_mqtt_api_message ( Agent, element, TRUE, "DLS_REPORT/REGISTRE/%s/%s", bit->tech_id, bit->acronyme );
+       Json_unref      ( element );
+     }
+  }
+/*----------------------------------------------------------------------------------------------------------------------------*/

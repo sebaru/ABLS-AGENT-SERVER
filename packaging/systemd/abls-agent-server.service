@@ -9,6 +9,8 @@ ExecStart=/usr/bin/abls-agent-server
 Group=abls
 Restart=on-failure
 RestartSec=5s
+StateDirectory=abls-agent-dls
+WorkingDirectory=/var/lib/abls-agent-dls
 
 [Install]
 WantedBy=multi-user.target

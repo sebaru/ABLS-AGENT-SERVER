@@ -1,0 +1,172 @@
+/******************************************************************************************************************************/
+/* ABLS-AGENT-DLS/src/The_dls_CH.c      Déclaration des fonctions pour la gestion des cpt_h                                        */
+/* Projet Abls-Habitat version 4.7       Gestion d'habitat                                       mar 14 fév 2006 15:03:51 CET */
+/* Auteur: LEFEVRE Sebastien                                                                                                  */
+/******************************************************************************************************************************/
+/*
+ * The_dls_CH.c
+ * This file is part of Abls-Habitat
+ *
+ * Copyright (C) 1988-2026 - Sébastien LEFÈVRE
+ *
+ * ABLS-AGENT-DLS is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * ABLS-AGENT-DLS is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with ABLS-AGENT-DLS; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor,
+ * Boston, MA  02110-1301  USA
+ */
+
+ #include "dls.h"
+
+/******************************************************************************************************************************/
+/* Dls_data_CH_create_by_array : Création d'un CH pour le plugin                                                              */
+/* Entrée : l'acronyme, le tech_id et le pointeur de raccourci                                                                */
+/******************************************************************************************************************************/
+ void Dls_data_CH_create_by_array ( JsonArray *array, guint index, JsonNode *element, gpointer user_data )
+  { struct DLS_PLUGIN *plugin = user_data;
+    gchar *tech_id  = Json_get_string ( element, "tech_id" );
+    gchar *acronyme = Json_get_string ( element, "acronyme" );
+    struct DLS_CH *bit = g_try_malloc0 ( sizeof(struct DLS_CH) );
+    if (!bit)
+    { Info( __func__, "dls", tech_id, LOG_ERR, "Memory error for '%s:%s'", tech_id, acronyme );
+       return;
+     }
+    g_snprintf( bit->tech_id,  sizeof(bit->tech_id),  "%s", tech_id );
+    g_snprintf( bit->acronyme, sizeof(bit->acronyme), "%s", acronyme );
+    g_snprintf( bit->libelle,  sizeof(bit->libelle),  "%s", Json_get_string ( element, "libelle" ) );
+    bit->valeur = Json_get_int    ( element, "valeur" );
+    bit->etat   = Json_get_bool   ( element, "etat" );
+    bit->archivage = Json_get_int ( element, "archivage" );
+    plugin->Dls_data_CH = g_slist_prepend ( plugin->Dls_data_CH, bit );
+    Info( __func__, "dls", tech_id, LOG_INFO,
+              "Create bit DLS_CH '%s:%s'=%d (%s)", bit->tech_id, bit->acronyme, bit->valeur, bit->libelle );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_lookup_CH: Recherche un CH dans les plugins DLS                                                                   */
+/* Entrée: le tech_id, l'acronyme                                                                                             */
+/* Sortie : Néant                                                                                                             */
+/******************************************************************************************************************************/
+ struct DLS_CH *Dls_data_CH_lookup ( gchar *tech_id, gchar *acronyme )
+  { if (!(tech_id && acronyme)) return(NULL);
+    GSList *plugins = Agent_vars->Dls_plugins;
+    while (plugins)
+     { struct DLS_PLUGIN *plugin = plugins->data;
+       if (!strcasecmp( plugin->tech_id, tech_id ))
+        { GSList *liste = plugin->Dls_data_CH;
+          while (liste)
+           { struct DLS_CH *bit = liste->data;
+             if ( !strcasecmp ( bit->acronyme, acronyme ) ) return(bit);
+             liste = g_slist_next(liste);
+           }
+        }
+       plugins = g_slist_next(plugins);
+     }
+    return(NULL);
+  }
+/******************************************************************************************************************************/
+/* Dls_data_CH_get : Recupere la valeur du compteur en parametre                                                              */
+/* Entrée : l'acronyme, le tech_id et le pointeur de raccourci                                                                */
+/******************************************************************************************************************************/
+ gint Dls_data_CH_get ( struct DLS_CH *cpt_h )
+  { if (cpt_h) return( cpt_h->valeur );
+    return(0);
+  }
+/******************************************************************************************************************************/
+/* Dls_data_CH_set: Positionne un CH dans la mémoire DLS                                                                      */
+/* Entrée: le tech_id, l'acronyme, le pointeur d'accélération et la valeur entière                                            */
+/* Sortie : Néant                                                                                                             */
+/******************************************************************************************************************************/
+ void Dls_data_CH_set ( struct DLS_PLUGIN *plugin, struct DLS_CH *bit, gboolean etat )
+  { if (!bit) return;
+
+    if (etat)
+     { if ( ! bit->etat )                                                                            /* Démarrage du comptage */
+        { bit->etat    = TRUE;
+          bit->old_top = Agent->Top;
+          Info( __func__, "dls", bit->tech_id, LOG_DEBUG,
+                    "ligne %04d: DLS_CH '%s:%s'=%d is now counting",
+                   (plugin ? plugin->num_ligne : -1), bit->tech_id, bit->acronyme, bit->valeur, bit->valeur );
+          if (plugin && plugin->debug) Dls_CH_report_to_API ( bit );                                   /* Si debug, envoi a l'API */
+        }
+       else                                                                                                       /* Comptage */
+        { int new_top, delta;
+          new_top = Agent->Top;
+          delta   = new_top - bit->old_top;
+          if (delta >= 10)                                                              /* On compte +1 toutes les secondes ! */
+           { bit->valeur += delta;
+             bit->old_top = new_top;
+             if (plugin && plugin->debug) Dls_CH_report_to_API ( bit );                                /* Si debug, envoi a l'API */
+             Agent_vars->audit_bit_interne_per_sec++;
+           }
+        }
+     }
+    else                                                                                          /* etat = FALSE, bit is off */
+     { if ( bit->etat )                                                                                  /* Arret du comptage */
+        { bit->etat = FALSE;
+          Info( __func__, "dls", bit->tech_id, LOG_DEBUG,
+                    "ligne %04d: DLS_CH '%s:%s'=%d is not counting anymore",
+                   (plugin ? plugin->num_ligne : -1), bit->tech_id, bit->acronyme, bit->valeur );
+          if (plugin && plugin->debug) Dls_CH_report_to_API ( bit );                                   /* Si debug, envoi a l'API */
+        }
+     }
+  }
+/******************************************************************************************************************************/
+/* Dls_data_CH_reset: Reset un compteur d'horaire                                                                             */
+/* Entrée: les DLS_VARS, le bit                                                                                               */
+/* Sortie : Néant                                                                                                             */
+/******************************************************************************************************************************/
+ void Dls_data_CH_reset ( struct DLS_PLUGIN *plugin, struct DLS_CH *bit )
+  { if (!bit) return;
+    if (bit->valeur > 0)
+     { Archive_Send_to_API( bit->tech_id, bit->acronyme, bit->valeur );                            /* Archivage si besoin */
+       Info( __func__, "dls", bit->tech_id, LOG_DEBUG,
+                "ligne %04d: DLS_CH '%s:%s'=%d resetted",
+                (plugin ? plugin->num_ligne : -1), bit->tech_id, bit->acronyme, bit->valeur );
+       bit->valeur = 0;
+       bit->etat   = FALSE;
+       if (plugin && plugin->debug) Dls_CH_report_to_API ( bit );                                      /* Si debug, envoi a l'API */
+     }
+  }
+/******************************************************************************************************************************/
+/* Dls_CH_report_to_API : Formate un bit au format JSON                                                                       */
+/* Entrées: le bit                                                                                                            */
+/* Sortie : le JSON                                                                                                           */
+/******************************************************************************************************************************/
+ void Dls_CH_report_to_API ( struct DLS_CH *bit )
+  { JsonNode *element = Json_create ();
+    if (element)
+     { Json_add_int  ( element, "valeur", bit->valeur );
+       Json_add_bool ( element, "etat",   bit->etat );
+       Agent_send_mqtt_api_message ( Agent, element, TRUE, "DLS_REPORT/CH/%s/%s", bit->tech_id, bit->acronyme );
+       Json_unref    ( element );
+     }
+  }
+/******************************************************************************************************************************/
+/* Dls_all_CH_to_json: Transforme tous les bits en JSON                                                                       */
+/* Entrée: target                                                                                                             */
+/* Sortie: néant                                                                                                              */
+/******************************************************************************************************************************/
+ void Dls_all_CH_to_json ( gpointer array, struct DLS_PLUGIN *plugin )
+  { JsonArray *RootArray = array;
+    GSList *liste = plugin->Dls_data_CH;
+    while ( liste )
+     { struct DLS_CH *bit = liste->data;
+       JsonNode *element = Json_create();
+       Json_add_string ( element, "tech_id",   bit->tech_id );
+       Json_add_string ( element, "acronyme",  bit->acronyme );
+       Json_add_int    ( element, "valeur",    bit->valeur );
+       Json_add_bool   ( element, "etat",      bit->etat );
+       Json_array_add_element ( RootArray, element );
+       liste = g_slist_next(liste);
+     }
+  }
+/*----------------------------------------------------------------------------------------------------------------------------*/

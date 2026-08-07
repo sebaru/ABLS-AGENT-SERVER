@@ -1,0 +1,162 @@
+/******************************************************************************************************************************/
+/* ABLS-AGENT-DLS/src/The_dls_CI.c      Déclaration des fonctions pour la gestion des compteurs d'impulsions                       */
+/* Projet Abls-Habitat version 4.7       Gestion d'habitat                                     mar. 07 déc. 2010 17:26:52 CET */
+/* Auteur: LEFEVRE Sebastien                                                                                                  */
+/******************************************************************************************************************************/
+/*
+ * The_dls_CI.c
+ * This file is part of Abls-Habitat
+ *
+ * Copyright (C) 1988-2026 - Sébastien LEFÈVRE
+ *
+ * ABLS-AGENT-DLS is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * ABLS-AGENT-DLS is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with ABLS-AGENT-DLS; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor,
+ * Boston, MA  02110-1301  USA
+ */
+
+ #include "dls.h"
+
+/******************************************************************************************************************************/
+/* Dls_data_CI_create_by_array : Création d'un CI pour le plugin                                                              */
+/* Entrée : l'acronyme, le tech_id et le pointeur de raccourci                                                                */
+/******************************************************************************************************************************/
+ void Dls_data_CI_create_by_array ( JsonArray *array, guint index, JsonNode *element, gpointer user_data )
+  { struct DLS_PLUGIN *plugin = user_data;
+    gchar *tech_id  = Json_get_string ( element, "tech_id" );
+    gchar *acronyme = Json_get_string ( element, "acronyme" );
+    struct DLS_CI *bit = g_try_malloc0 ( sizeof(struct DLS_CI) );
+    if (!bit)
+    { Info( __func__, "dls", tech_id, LOG_ERR, "Memory error for '%s:%s'", tech_id, acronyme );
+       return;
+     }
+    g_snprintf( bit->tech_id,  sizeof(bit->tech_id),  "%s", tech_id );
+    g_snprintf( bit->acronyme, sizeof(bit->acronyme), "%s", acronyme );
+    g_snprintf( bit->libelle,  sizeof(bit->libelle),  "%s", Json_get_string ( element, "libelle" ) );
+    g_snprintf( bit->unite,    sizeof(bit->unite),    "%s", Json_get_string ( element, "unite" ) );
+    bit->valeur    = Json_get_int ( element, "valeur" );
+    bit->archivage = Json_get_int ( element, "archivage" );
+    bit->etat      = Json_get_bool ( element, "etat" );
+    plugin->Dls_data_CI = g_slist_prepend ( plugin->Dls_data_CI, bit );
+    Info( __func__, "dls", tech_id, LOG_INFO,
+              "Create bit DLS_CI '%s:%s'=%d (%s)", bit->tech_id, bit->acronyme, bit->valeur, bit->libelle );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_CI_lookup : Recherche un CH dans les plugins DLS                                                                  */
+/* Entrée : l'acronyme, le tech_id et le pointeur de raccourci                                                                */
+/******************************************************************************************************************************/
+ struct DLS_CI *Dls_data_CI_lookup ( gchar *tech_id, gchar *acronyme )
+  { if (!(tech_id && acronyme)) return(NULL);
+    GSList *plugins = Agent_vars->Dls_plugins;
+    while (plugins)
+     { struct DLS_PLUGIN *plugin = plugins->data;
+       if (!strcasecmp( plugin->tech_id, tech_id ))
+        { GSList *liste = plugin->Dls_data_CI;
+          while (liste)
+           { struct DLS_CI *bit = liste->data;
+             if ( !strcasecmp ( bit->acronyme, acronyme ) ) return(bit);
+             liste = g_slist_next(liste);
+           }
+        }
+       plugins = g_slist_next(plugins);
+     }
+    return(NULL);
+  }
+/******************************************************************************************************************************/
+/* Dls_data_CI_set: Positionne un compteur d'impulsion                                                                        */
+/* Entrée: le tech_id, l'acronyme, le pointeur d'accélération et la valeur entière                                            */
+/* Sortie : Néant                                                                                                             */
+/******************************************************************************************************************************/
+ void Dls_data_CI_set ( struct DLS_PLUGIN *plugin, struct DLS_CI *bit, gboolean etat )
+  { if (!bit) return;
+    if (etat)
+     { if ( bit->etat == FALSE )                                                                          /* Passage en actif */
+        { bit->etat = TRUE;
+          Agent_vars->audit_bit_interne_per_sec++;
+          bit->valeur++;
+          Info( __func__, "dls", bit->tech_id, LOG_DEBUG,
+                    "ligne %04d: Changing DLS_CI '%s:%s'=%d",
+                    (plugin ? plugin->num_ligne : -1), bit->tech_id, bit->acronyme, bit->valeur );
+          if (plugin && plugin->debug) Dls_CI_report_to_API ( bit );                                   /* Si debug, envoi à l'API */
+        }
+     }
+    else
+     { bit->etat = FALSE; }
+  }
+/******************************************************************************************************************************/
+/* Dls_data_CI_set_pulse: Envoi une impulsion sur une CI (TRUE puis FALSE)                                                    */
+/* Entrée: le DLS_VARS et le compteur                                                                                         */
+/* Sortie : Néant                                                                                                             */
+/******************************************************************************************************************************/
+ void Dls_data_CI_set_pulse ( struct DLS_PLUGIN *plugin, struct DLS_CI *bit )
+  { if (!bit) return;
+    Dls_data_CI_set ( plugin, bit, TRUE );
+    Dls_data_CI_set ( plugin, bit, FALSE );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_CI_reset: Reset un compteur d'impulsion                                                                           */
+/* Entrée: le DLS_VARS et le compteur                                                                                         */
+/* Sortie : Néant                                                                                                             */
+/******************************************************************************************************************************/
+ void Dls_data_CI_reset ( struct DLS_PLUGIN *plugin, struct DLS_CI *bit )
+  { if (!bit) return;
+    if (bit->valeur!=0)
+     { Archive_Send_to_API( bit->tech_id, bit->acronyme, bit->valeur );                            /* Archivage si besoin */
+       Info( __func__, "dls", bit->tech_id, LOG_DEBUG,
+             "ligne %04d: DLS_CI '%s:%s'=%d resetted",
+             (plugin ? plugin->num_ligne : -1), bit->tech_id, bit->acronyme, bit->valeur );
+       bit->valeur = 0;                                                                          /* Valeur réelle du compteur */
+     }
+  }
+/******************************************************************************************************************************/
+/* Dls_data_CI_get : Recupere la valeur du compteur en parametre                                                              */
+/* Entrée : l'acronyme, le tech_id et le pointeur de raccourci                                                                */
+/******************************************************************************************************************************/
+ gint Dls_data_CI_get ( struct DLS_CI *cpt_imp )
+  { if (!cpt_imp) return(0);
+    return( cpt_imp->valeur );
+  }
+/******************************************************************************************************************************/
+/* Dls_CI_report_to_API : Formate un bit au format JSON                                                                       */
+/* Entrées: le bit                                                                                                            */
+/* Sortie : le JSON                                                                                                           */
+/******************************************************************************************************************************/
+ void Dls_CI_report_to_API ( struct DLS_CI *bit )
+  { JsonNode *element = Json_create ();
+    if (element)
+     { Json_add_int  ( element, "valeur", bit->valeur );
+       Json_add_bool ( element, "etat",   bit->etat );
+       Agent_send_mqtt_api_message ( Agent, element, TRUE, "DLS_REPORT/CI/%s/%s", bit->tech_id, bit->acronyme );
+       Json_unref    ( element );
+     }
+  }
+/******************************************************************************************************************************/
+/* Dls_all_CI_to_json: Transforme tous les bits en JSON                                                                       */
+/* Entrée: target                                                                                                             */
+/* Sortie: néant                                                                                                              */
+/******************************************************************************************************************************/
+ void Dls_all_CI_to_json ( gpointer array, struct DLS_PLUGIN *plugin )
+  { JsonArray *RootArray = array;
+    GSList *liste = plugin->Dls_data_CI;
+    while ( liste )
+     { struct DLS_CI *bit = liste->data;
+       JsonNode *element = Json_create();
+       Json_add_string ( element, "tech_id",   bit->tech_id );
+       Json_add_string ( element, "acronyme",  bit->acronyme );
+       Json_add_int    ( element, "valeur",    bit->valeur );
+       Json_add_bool   ( element, "etat",      bit->etat );
+       Json_array_add_element ( RootArray, element );
+       liste = g_slist_next(liste);
+     }
+  }
+/*----------------------------------------------------------------------------------------------------------------------------*/
