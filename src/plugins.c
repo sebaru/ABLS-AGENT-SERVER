@@ -152,7 +152,7 @@
 
     gint pidgcc = fork();
     if (pidgcc<0)
-    { Info( __func__, FACILITY_PLUGIN, tech_id, LOG_WARNING, "Fils: envoi erreur Fork GCC '%s'", tech_id );
+     { Info( __func__, FACILITY_PLUGIN, tech_id, LOG_WARNING, "Fils: envoi erreur Fork GCC '%s'", tech_id );
        return(FALSE);
      }
     else if (!pidgcc)
@@ -182,13 +182,12 @@
 /******************************************************************************************************************************/
  static gboolean Dls_Dlopen_plugin ( struct DLS_PLUGIN *plugin )
   { gchar nom_fichier_absolu[60];
-
     g_snprintf( nom_fichier_absolu, sizeof(nom_fichier_absolu), "Dls/libdls%s.so", plugin->tech_id );
 
     if (plugin->handle)                                /* Si deja chargé, on le décharge. A ce niveau, dls est stoppé (mutex) */
      { if (dlclose( plugin->handle ))
         { Info( __func__, FACILITY_PLUGIN, plugin->tech_id, LOG_NOTICE, "'%s': dlclose error '%s' (%s)",
-                    plugin->tech_id, dlerror(), plugin->shortname );
+                plugin->tech_id, dlerror(), plugin->shortname );
         }
        plugin->handle = NULL;
        Info( __func__, FACILITY_PLUGIN, plugin->tech_id, LOG_NOTICE, "'%s' unloaded (%s)", plugin->tech_id, plugin->shortname );
@@ -250,7 +249,6 @@
      { plugin->remap_all_alias(plugin);
        Info( __func__, FACILITY_PLUGIN, plugin->tech_id, LOG_DEBUG, "Remapping Alias for '%s' OK", plugin->tech_id );
      }
-    else Info( __func__, FACILITY_PLUGIN, plugin->tech_id, LOG_ERR, "Remapping Alias for '%s' Failed", plugin->tech_id );
 
     if (!strcasecmp ( plugin->tech_id, "SYS" ) )                           /* Mapping des bits internes pour le plugin "SYS" */
      { Agent_vars->sys_flipflop_5hz   = Dls_data_BI_lookup   ( "SYS", "FLIPFLOP_5HZ" );
@@ -301,31 +299,40 @@
 /* Entrée: le tech_id associé                                                                                                 */
 /* Sortie: Néant                                                                                                              */
 /******************************************************************************************************************************/
- struct DLS_PLUGIN *Dls_Reload_un_plugin ( gchar *tech_id )
-  { Info( __func__, FACILITY_PLUGIN, tech_id, LOG_INFO, "Starting reload of plugin '%s'", tech_id );
-    Dls_Decharger_un_plugin( tech_id );                                                 /* d'abord on le libère de la mémoire */
+ void Dls_Importer_un_plugin ( gpointer data, gpointer user_data )
+  { gchar tech_id[DLS_NBR_CARAC_TECHID];
+    g_strlcpy(tech_id, (gchar *)data, sizeof(tech_id));
+    g_free(data);
+    Info( __func__, FACILITY_PLUGIN, tech_id, LOG_INFO, "Importing plugin '%s'", tech_id );
                                                                                  /* Récupère les metadata du plugin à charger */
     JsonNode *api_result = Http_Get_from_global_API ( Agent, "/run/dls/load", "tech_id=%s", tech_id );
     if (api_result == NULL || Json_get_int ( api_result, "http_code" ) != 200)
      { Info( __func__, FACILITY_PLUGIN, tech_id, LOG_ERR, "'%s': API Error.", tech_id );
-       return(NULL);
+       return;
      }
 
-    if ( !Json_has_member ( api_result, "codec" ) )
-     { Info( __func__, FACILITY_PLUGIN, tech_id, LOG_ERR, "'%s': Missing CodeC.", tech_id );
+    gchar nom_fichier[60];
+    g_snprintf( nom_fichier, sizeof(nom_fichier), "Dls/libdls-%s.so", tech_id );
+    if (g_file_test(nom_fichier, G_FILE_TEST_IS_REGULAR ))
+     { Info( __func__, FACILITY_PLUGIN, tech_id, LOG_INFO, "Plugin '%s' already exists on disk. Loading.", tech_id ); }
+    else if ( !Json_has_member ( api_result, "codec" ) )
+     { Info( __func__, FACILITY_PLUGIN, tech_id, LOG_ERR, "'%s': Missing CodeC from API. Dropping.", tech_id );
        Json_unref(api_result);
-       return(NULL);
+       return;
      }
-
-    Dls_Save_CodeC_to_disk ( tech_id, Json_get_string ( api_result, "codec" ) );
-    Dls_Compiler_source_dls ( tech_id );
+    else
+     { Info( __func__, FACILITY_PLUGIN, tech_id, LOG_INFO, "Plugin '%s' needs to be compiled.", tech_id );
+       Dls_Save_CodeC_to_disk ( tech_id, Json_get_string ( api_result, "codec" ) );
+       Dls_Compiler_source_dls ( tech_id );
+     }
 
     struct DLS_PLUGIN *plugin = g_try_malloc0 ( sizeof (struct DLS_PLUGIN) );
     if (!plugin)                                                                                /* Peuplement de la structure */
      { Info( __func__, FACILITY_PLUGIN, tech_id, LOG_ERR, "'%s' Memory error", tech_id );
        Json_unref(api_result);
-       return(NULL);
+       return;
      }
+
     g_snprintf ( plugin->tech_id,   sizeof(plugin->tech_id),   "%s", tech_id );
     g_snprintf ( plugin->name,      sizeof(plugin->name),      "%s", Json_get_string ( api_result, "name" ) );
     g_snprintf ( plugin->shortname, sizeof(plugin->shortname), "%s", Json_get_string ( api_result, "shortname" ) );
@@ -370,15 +377,27 @@
     if (plugin->init) plugin->init(plugin);                                            /* Appel de la fonction Init du plugin */
 
     Json_unref(api_result);
-    return(plugin);
+  }
+/******************************************************************************************************************************/
+/* Dls_Reload_un_plugin: Wipe un .so et recharge completement un plugin                                                       */
+/* Entrée: le tech_id associé                                                                                                 */
+/* Sortie: Néant                                                                                                              */
+/******************************************************************************************************************************/
+ void Dls_Reload_un_plugin ( gchar *tech_id )
+  { Info( __func__, FACILITY_PLUGIN, tech_id, LOG_INFO, "Starting reload of plugin '%s'", tech_id );
+    Dls_Decharger_un_plugin( tech_id );                                                 /* d'abord on le libère de la mémoire */
+    gchar nom_fichier[60];
+    g_snprintf( nom_fichier, sizeof(nom_fichier), "Dls/libdls-%s.so", tech_id );
+    g_unlink(nom_fichier);                                                                         /* puis on supprime le .so */
+    g_thread_pool_push( Agent_vars->Thread_import_plugin_pool, g_strdup(tech_id), NULL );
   }
 /******************************************************************************************************************************/
 /* Dls_Reload_un_plugin_by_array: Import un DLS par array                                                                     */
 /* Entrée: les parametres du tableau                                                                                          */
 /* Sortie: Néant                                                                                                              */
 /******************************************************************************************************************************/
- static void Dls_Reload_un_plugin_by_array ( JsonArray *array, guint index, JsonNode *element, gpointer user_data )
-  { Dls_Reload_un_plugin ( Json_get_string ( element, "tech_id" ) ); }
+ static void Dls_Importer_un_plugin_by_array ( JsonArray *array, guint index, JsonNode *element, gpointer user_data )
+  { g_thread_pool_push( Agent_vars->Thread_import_plugin_pool, g_strdup(Json_get_string ( element, "tech_id" )), NULL ); }
 /******************************************************************************************************************************/
 /* Dls_Importer_plugins: Importe tous les plugins depuis l'API                                                                */
 /* Entrée: Rien                                                                                                               */
@@ -392,11 +411,12 @@
        Json_unref ( api_result );
        return;
      }
-    Info( __func__, FACILITY_PLUGIN, NULL, LOG_INFO, "API Request for /run/dls/plugins OK." );
+    Info( __func__, FACILITY_PLUGIN, NULL, LOG_INFO, "Loading %d plugins.", Json_get_int ( api_result, "nbr_plugins" ) );
 
-    Json_foreach_array_element_by_thread ( api_result, "plugins", Dls_Reload_un_plugin_by_array, NULL, 2*get_nprocs() );
+    Json_foreach_array_element ( api_result, "plugins", Dls_Importer_un_plugin_by_array, NULL );
+    while ( !g_thread_pool_unprocessed ( Agent_vars->Thread_import_plugin_pool ) ) sched_yield();         /* On attend la fin */
     Info( __func__, FACILITY_PLUGIN, NULL, LOG_NOTICE, "%03d plugins loaded in %06.1fs (with %02d proc)",
-          Json_get_int ( api_result, "nbr_plugins" ), (Agent->Top-top)/10.0, get_nprocs() );
+          Json_get_int ( api_result, "nbr_plugins" ), (Agent->Top-top)/10.0, g_get_num_processors() );
     Json_unref ( api_result );
   }
 /******************************************************************************************************************************/

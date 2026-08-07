@@ -91,6 +91,8 @@
     guint next_top_1min;
     guint next_top_10min;
     guint last_top;
+    GThreadPool *Thread_import_plugin_pool;                                                     /* Pool de threads de l'agent */
+
  };
 
 #endif

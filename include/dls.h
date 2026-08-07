@@ -28,9 +28,11 @@
 #ifndef _ABLS_AGENT_DLS_H_
  #define _ABLS_AGENT_DLS_H_
 
- #define NBR_CARAC_TECHID     32
- #define NBR_CARAC_ACRONYME   64
- #define NBR_CARAC_UNITE      32
+ #define DLS_NBR_CARAC_TECHID     32
+ #define DLS_NBR_CARAC_ACRONYME   64
+ #define DLS_NBR_CARAC_UNITE      32
+ #define DLS_NBR_CARAC_LIBELLE    128
+ #define DLS_NBR_CARAC_FORME      32
 
  #include <abls-agent-libs.h>
  #include "server.h"
@@ -47,10 +49,10 @@ enum                                                                            
     DLS_TEMPO_WAIT_FOR_COND_OFF                                            /* Attend que la condition soit tombée avant reset */
   };
 
-  struct DLS_TEMPO                                                                           /* Définition d'une temporisation */
-  { gchar   acronyme[64];
-    gchar   tech_id[32];
-    gchar   libelle[128];                                                                                     /* Km, h, ° ... */
+ struct DLS_TEMPO                                                                           /* Définition d'une temporisation */
+   { gchar   acronyme[DLS_NBR_CARAC_ACRONYME];
+    gchar   tech_id[DLS_NBR_CARAC_TECHID];
+    gchar   libelle[DLS_NBR_CARAC_LIBELLE];                                                                                     /* Km, h, ° ... */
     gboolean init;                                   /* True si les données delai_on/off min_on/off ont bien été positionnées */
     guint status;                                                                               /* Statut de la temporisation */
     guint date_on;                                                              /* date a partir de laquelle la tempo sera ON */
@@ -64,10 +66,10 @@ enum                                                                            
   };
 
  struct DLS_AI
-  { gchar   tech_id[32];
-    gchar   acronyme[64];
-    gchar   libelle[128];                                                                                     /* Km, h, ° ... */
-    gchar   unite[32];                                                                                        /* Km, h, ° ... */
+  { gchar   tech_id[DLS_NBR_CARAC_TECHID];
+    gchar   acronyme[DLS_NBR_CARAC_ACRONYME];
+    gchar   libelle[DLS_NBR_CARAC_LIBELLE];                                                                                     /* Km, h, ° ... */
+    gchar   unite[DLS_NBR_CARAC_UNITE];                                                                                        /* Km, h, ° ... */
     gdouble valeur;
     guint   in_range;
     guint   archivage;
@@ -75,50 +77,50 @@ enum                                                                            
    };
 
  struct DLS_AO
-  { gchar   acronyme[64];
-    gchar   tech_id[32];
-    gchar   libelle[128];                                                                                     /* Km, h, ° ... */
-    gchar   unite[32];                                                                           /* Km, h, ° ... */
+  { gchar   acronyme[DLS_NBR_CARAC_ACRONYME];
+    gchar   tech_id[DLS_NBR_CARAC_TECHID];
+    gchar   libelle[DLS_NBR_CARAC_LIBELLE];                                                                                     /* Km, h, ° ... */
+    gchar   unite[DLS_NBR_CARAC_UNITE];                                                                           /* Km, h, ° ... */
     gdouble valeur;
     guint   archivage;
     guint   last_arch;                                                                         /* Date de la derniere archive */
   };
 
  struct DLS_WATCHDOG
-  { gchar   tech_id[32];
-    gchar   acronyme[64];
-    gchar   libelle[128];                                                                                     /* Km, h, ° ... */
+  { gchar   tech_id[DLS_NBR_CARAC_TECHID];
+    gchar   acronyme[DLS_NBR_CARAC_ACRONYME];
+    gchar   libelle[DLS_NBR_CARAC_LIBELLE];                                                                                     /* Km, h, ° ... */
     guint   top;
   };
 
  struct DLS_HORLOGE
-  { gchar   tech_id[32];
-    gchar   acronyme[64];
-    gchar   libelle[128];                                                                                     /* Km, h, ° ... */
+  { gchar   tech_id[DLS_NBR_CARAC_TECHID];
+    gchar   acronyme[DLS_NBR_CARAC_ACRONYME];
+    gchar   libelle[DLS_NBR_CARAC_LIBELLE];                                                                                     /* Km, h, ° ... */
   };
 
  struct DLS_MONO
-  { gchar   tech_id[32];
-    gchar   acronyme[64];
-    gchar   libelle[128];                                                                                     /* Km, h, ° ... */
+  { gchar   tech_id[DLS_NBR_CARAC_TECHID];
+    gchar   acronyme[DLS_NBR_CARAC_ACRONYME];
+    gchar   libelle[DLS_NBR_CARAC_LIBELLE];                                                                                     /* Km, h, ° ... */
     gboolean etat;                                                                                      /* Etat actuel du bit */
     gboolean edge_up;
     gboolean edge_down;
   };
 
  struct DLS_BI
-  { gchar   tech_id[32];
-    gchar   acronyme[64];
-    gchar   libelle[128];                                                                                     /* Km, h, ° ... */
+  { gchar   tech_id[DLS_NBR_CARAC_TECHID];
+    gchar   acronyme[DLS_NBR_CARAC_ACRONYME];
+    gchar   libelle[DLS_NBR_CARAC_LIBELLE];                                                                                     /* Km, h, ° ... */
     gboolean etat;                                                                                      /* Etat actuel du bit */
     gboolean edge_up;
     gboolean edge_down;
   };
 
  struct DLS_DI
-  { gchar   tech_id[32];
-    gchar   acronyme[64];
-    gchar   libelle[128];                                                                                     /* Km, h, ° ... */
+  { gchar   tech_id[DLS_NBR_CARAC_TECHID];
+    gchar   acronyme[DLS_NBR_CARAC_ACRONYME];
+    gchar   libelle[DLS_NBR_CARAC_LIBELLE];                                                                                     /* Km, h, ° ... */
     gboolean etat;
     gboolean edge_up;
     gboolean edge_down;
@@ -127,9 +129,9 @@ enum                                                                            
   };
 
  struct DLS_DO
-  { gchar   tech_id[32];
-    gchar   acronyme[64];
-    gchar   libelle[128];                                                                                     /* Km, h, ° ... */
+  { gchar   tech_id[DLS_NBR_CARAC_TECHID];
+    gchar   acronyme[DLS_NBR_CARAC_ACRONYME];
+    gchar   libelle[DLS_NBR_CARAC_LIBELLE];                                                                                     /* Km, h, ° ... */
     gboolean mono;
     gboolean etat;
     gboolean edge_up;
@@ -139,9 +141,9 @@ enum                                                                            
   };
 
  struct DLS_CI
-  { gchar   tech_id[32];
-    gchar   acronyme[64];
-    gchar   libelle[128];                                                                                     /* Km, h, ° ... */
+  { gchar   tech_id[DLS_NBR_CARAC_TECHID];
+    gchar   acronyme[DLS_NBR_CARAC_ACRONYME];
+    gchar   libelle[DLS_NBR_CARAC_LIBELLE];                                                                                     /* Km, h, ° ... */
     gint    valeur;
     gchar   unite[32];
     gboolean etat;
@@ -150,9 +152,9 @@ enum                                                                            
   };
 
  struct DLS_CH
-  { gchar   tech_id[32];
-    gchar   acronyme[64];
-    gchar   libelle[128];                                                                                     /* Km, h, ° ... */
+  { gchar   tech_id[DLS_NBR_CARAC_TECHID];
+    gchar   acronyme[DLS_NBR_CARAC_ACRONYME];
+    gchar   libelle[DLS_NBR_CARAC_LIBELLE];                                                                                     /* Km, h, ° ... */
     guint   valeur;
     gint    archivage;
     guint last_arch;                                                     /* Date de dernier enregistrement en base de données */
@@ -161,9 +163,9 @@ enum                                                                            
   };
 
  struct DLS_VISUEL
-  { gchar    forme[32];
-    gchar    tech_id[32];
-    gchar    acronyme[64];
+  { gchar    forme[DLS_NBR_CARAC_FORME];
+    gchar    tech_id[DLS_NBR_CARAC_TECHID];
+    gchar    acronyme[DLS_NBR_CARAC_ACRONYME];
     gchar   *libelle;
     gchar   *mode;
     gchar   *color;
@@ -179,9 +181,9 @@ enum                                                                            
 
  struct DLS_MESSAGE
   { JsonNode *source_node;
-    gchar   tech_id[32];
-    gchar   acronyme[64];
-    gchar   libelle_converted[256];                                                      /* Le libelle converti selon les "$" */
+    gchar   tech_id[DLS_NBR_CARAC_TECHID];
+    gchar   acronyme[DLS_NBR_CARAC_ACRONYME];
+    gchar   libelle_converted[DLS_NBR_CARAC_LIBELLE];                                                      /* Le libelle converti selon les "$" */
     gboolean etat;                                                                          /* Etat avant execution du plugin */
     gboolean new_etat;                                                                      /* Etat après execution du plugin */
     gint new_etat_by_line;                                                    /* Numéro de ligne du dernier changement d'état */
@@ -191,9 +193,9 @@ enum                                                                            
   };
 
  struct DLS_REGISTRE
-  { gchar   tech_id[32];
-    gchar   acronyme[64];
-    gchar   libelle[128];                                                                                     /* Km, h, ° ... */
+  { gchar   tech_id[DLS_NBR_CARAC_TECHID];
+    gchar   acronyme[DLS_NBR_CARAC_ACRONYME];
+    gchar   libelle[DLS_NBR_CARAC_LIBELLE];                                                                                     /* Km, h, ° ... */
     gdouble valeur;
     gchar   unite[32];
     gint    archivage;
@@ -204,8 +206,8 @@ enum                                                                            
 
  struct DLS_PLUGIN
   { gchar name[128];
-    gchar shortname[ NBR_CARAC_ACRONYME ];
-    gchar tech_id[NBR_CARAC_TECHID];
+    gchar shortname[ DLS_NBR_CARAC_ACRONYME ];
+    gchar tech_id[DLS_NBR_CARAC_TECHID];
     gchar package[130];
     guint syn_id;
     guint dls_id;
@@ -291,7 +293,8 @@ enum                                                                            
 
  extern void Dls_Decharger_un_plugin ( gchar *tech_id );
  extern void Dls_Decharger_plugins ( void );
- extern struct DLS_PLUGIN *Dls_Reload_un_plugin ( gchar *tech_id );
+ extern void Dls_Reload_un_plugin ( gchar *tech_id );
+ extern void Dls_Importer_un_plugin ( gpointer data, gpointer user_data );
  extern void Dls_Importer_plugins ( void );
  extern gboolean Dls_auto_create_plugin( JsonNode *RootNode );
  extern void Dls_Debug_plugin ( gchar *tech_id, gboolean actif );

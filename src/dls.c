@@ -40,6 +40,13 @@
     g_rw_lock_init ( &Agent_vars->Liste_AO_synchro );
     g_rw_lock_init ( &Agent_vars->Liste_visuel_synchro );
     g_rw_lock_init ( &Agent_vars->Liste_msg_synchro );
+    GError *error = NULL;
+    Agent_vars->Thread_import_plugin_pool = g_thread_pool_new( Dls_Importer_un_plugin, NULL, g_get_num_processors(), TRUE, &error);
+    if (error != NULL)
+     { Info( __func__, "dls", NULL, LOG_ERR, "Thread_import_plugin_pool failed: %s", error->message );
+       g_error_free(error);
+     }
+    g_thread_pool_set_max_unused_threads ( 1 );
 
     Agent_set_status ( Agent, "Loading mappings..." );
     MAP_Init();
@@ -65,7 +72,8 @@
 /* Sortie: rien                                                                                                               */
 /******************************************************************************************************************************/
  void Dls_end ( void )
-  { Dls_Decharger_plugins();
+  { g_thread_pool_free (Agent_vars->Thread_import_plugin_pool, FALSE, TRUE);
+    Dls_Decharger_plugins();
 
     g_rw_lock_clear ( &Agent_vars->Dls_plugins_lock );
     g_rw_lock_clear ( &Agent_vars->Liste_DO_synchro );
@@ -160,8 +168,7 @@
  void Dls_set_cde_exterieure ( void )
   { while( Agent_vars->Set_Dls_Data )                                                            /* A-t-on une entrée a allumer ?? */
      { struct DLS_DI *di = Agent_vars->Set_Dls_Data->data;
-      Info( __func__, "dls", di->tech_id, LOG_NOTICE, "%s: Mise a 1 du bit DI %s:%s",
-                 __func__, di->tech_id, di->acronyme );
+       Info( __func__, "dls", di->tech_id, LOG_NOTICE, "Mise a 1 du bit DI %s:%s", di->tech_id, di->acronyme );
        Agent_vars->Set_Dls_Data = g_slist_remove ( Agent_vars->Set_Dls_Data, di );
        Agent_vars->Reset_Dls_Data = g_slist_append ( Agent_vars->Reset_Dls_Data, di );
        Dls_data_DI_set ( di, TRUE );                                                             /* Mise a un du bit d'entrée */
@@ -175,8 +182,7 @@
  void Dls_reset_cde_exterieure ( void )
   { while( Agent_vars->Reset_Dls_Data )                                            /* A-t-on un monostable a éteindre ?? */
      { struct DLS_DI *di = Agent_vars->Reset_Dls_Data->data;
-      Info( __func__, "dls", di->tech_id, LOG_DEBUG, "%s: Mise a 0 du bit DI %s:%s",
-                 __func__, di->tech_id, di->acronyme );
+       Info( __func__, "dls", di->tech_id, LOG_DEBUG, "Mise a 0 du bit DI %s:%s", di->tech_id, di->acronyme );
        Agent_vars->Reset_Dls_Data = g_slist_remove ( Agent_vars->Reset_Dls_Data, di );
        Dls_data_DI_set ( di, FALSE );                                                          /* Mise a zero du bit d'entrée */
      }

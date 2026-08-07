@@ -46,10 +46,10 @@
     if (!path)
      { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
             "package '%s' not found. Install in progress.", chaine );
-       Thread_exec ( Agent, "AGENT-INSTALL", "sudo -n %s install %s", (Agent->is_apt ? "apt" : "dnf"), chaine );
+       Thread_shell_queue ( Agent, "AGENT-INSTALL", "sudo -n %s install %s", (Agent->is_apt ? "apt" : "dnf"), chaine );
      } else g_free(path);
     g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", agent_classe, agent_tech_id );
-    Thread_exec ( Agent, "AGENT-ENABLE", "sudo -n systemctl enable --now %s", chaine );
+    Thread_shell_queue ( Agent, "AGENT-ENABLE", "sudo -n systemctl enable --now %s", chaine );
     Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "%s (class %s) is starting", agent_tech_id, agent_classe );
   }
 /******************************************************************************************************************************/
@@ -72,13 +72,14 @@
  gint main(gint argc, gchar *argv[])
   { gchar *hostname = g_utf8_strup ( g_get_host_name(), -1 );                /* Le tech_id d'un agent server est son hostname */
     setenv ( "ABLS_AGENT_TECH_ID", hostname, 1 );
-    setenv ( "ABLS_TPS", "100", 1 );
     g_free ( hostname );
+    setenv ( "ABLS_TPS", "100", 1 );
     Agent = Agent_init ( argv[0], "server", ABLS_AGENT_SERVER_VERSION, sizeof(struct ABLS_SERVER_VARS), argc, argv );
     Agent_vars = Agent->vars;
 
-    Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/+/INSTALL", Agent->domain_uuid );    /* Pour installer les agents sur le server */
-    Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/+/UPGRADE", Agent->domain_uuid );
+    g_mkdir ( "Dls", 0755 );                                                                    /* Creation du repertoire DLS */
+
+    Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/+/UPGRADE", Agent->domain_uuid );  /* Pour installer les agents sur le server */
     Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/+/RESTART", Agent->domain_uuid );
     Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/+/STOP",    Agent->domain_uuid );
     Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/+/START",   Agent->domain_uuid );
@@ -142,7 +143,7 @@
                  }
                 else
                  { g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
-                   Thread_exec ( Agent, "AGENT-DISABLE", "sudo -n systemctl disable --now %s", chaine, NULL );
+                   Thread_shell_queue ( Agent, "AGENT-DISABLE", "sudo -n systemctl disable --now %s", chaine, NULL );
                  }
               }
              else
@@ -164,7 +165,7 @@
               { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to RESTART %s (class %s)", target, classe );
                 g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
-                Thread_exec ( Agent, "AGENT-RESTART", "sudo -n systemctl restart %s", chaine );}
+                Thread_shell_queue ( Agent, "AGENT-RESTART", "sudo -n systemctl restart %s", chaine );}
              else
               { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to RESTART %s, but classe not provided", target );
@@ -176,9 +177,9 @@
               { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to UPGRADE %s (class %s)", target, classe );
                 g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", classe );
-                Thread_exec ( Agent, "AGENT-UPGRADE", "sudo -n %s %s %s -y", (Agent->is_apt ? "apt" : "dnf"), (Agent->is_apt ? "update" : "upgrade"), chaine );
+                Thread_shell_queue ( Agent, "AGENT-UPGRADE", "sudo -n %s %s %s -y", (Agent->is_apt ? "apt" : "dnf"), (Agent->is_apt ? "update" : "upgrade"), chaine );
                 g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
-                Thread_exec ( Agent, "AGENT-RESTART", "sudo -n systemctl restart %s", chaine );
+                Thread_shell_queue ( Agent, "AGENT-RESTART", "sudo -n systemctl restart %s", chaine );
               }
              else
               { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
