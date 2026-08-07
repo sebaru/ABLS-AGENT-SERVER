@@ -6,6 +6,16 @@ if ! getent group abls >/dev/null 2>&1; then
   addgroup --system abls || true
 fi
 
+# Creation de l'utilisateur abls-agent-server
+if ! getent passwd abls-agent-server >/dev/null 2>&1; then
+  adduser --system --ingroup abls --no-create-home --shell /usr/sbin/nologin abls-agent-server || true
+fi
+
+# Creation du repertoire de travail
+mkdir -p /var/lib/abls-agent-server
+chown abls-agent-server:abls /var/lib/abls-agent-server
+chmod 750 /var/lib/abls-agent-server
+
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
   systemctl daemon-reload >/dev/null 2>&1 || true
   if systemctl is-active --quiet abls-agent-server.service 2>/dev/null; then

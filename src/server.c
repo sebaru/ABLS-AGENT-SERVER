@@ -101,8 +101,12 @@
     if (is_master)
      { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "This server is the master of the domain" );
        Dls_init();
+       Agent_set_status ( Agent, "D.L.S Running" );
      }
-    else Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "This server is a slave of the domain" );
+    else
+     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "This server is a slave of the domain" );
+       Agent_set_status ( Agent, "Waiting for command" );
+     }
 
     while(Agent->Agent_run == AGENT_IS_RUNNING)                                              /* On tourne tant que necessaire */
      { Agent_loop ( Agent );                                             /* Loop sur l'agent pour mettre a jour la telemetrie */

@@ -404,8 +404,7 @@
 /* Sortie: Rien                                                                                                               */
 /******************************************************************************************************************************/
  void Dls_Importer_plugins ( void )
-  { guint top = Agent->Top;
-    JsonNode *api_result = Http_Post_to_global_API ( Agent, "/run/dls/plugins", NULL );
+  { JsonNode *api_result = Http_Post_to_global_API ( Agent, "/run/dls/plugins", NULL );
     if (api_result == NULL || Json_get_int ( api_result, "http_code" ) != 200)
      { Info( __func__, FACILITY_PLUGIN, NULL, LOG_ERR, "API Request for /run/dls/plugins failed. No plugin loaded." );
        Json_unref ( api_result );
@@ -414,9 +413,6 @@
     Info( __func__, FACILITY_PLUGIN, NULL, LOG_INFO, "Loading %d plugins.", Json_get_int ( api_result, "nbr_plugins" ) );
 
     Json_foreach_array_element ( api_result, "plugins", Dls_Importer_un_plugin_by_array, NULL );
-    while ( !g_thread_pool_unprocessed ( Agent_vars->Thread_import_plugin_pool ) ) sched_yield();         /* On attend la fin */
-    Info( __func__, FACILITY_PLUGIN, NULL, LOG_NOTICE, "%03d plugins loaded in %06.1fs (with %02d proc)",
-          Json_get_int ( api_result, "nbr_plugins" ), (Agent->Top-top)/10.0, g_get_num_processors() );
     Json_unref ( api_result );
   }
 /******************************************************************************************************************************/
