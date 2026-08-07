@@ -8,8 +8,8 @@ Type=simple
 ExecStart=/usr/bin/abls-agent-server
 User=abls-agent-server
 Group=abls
-Restart=on-failure
-RestartSec=5s
+Restart=always
+RestartSec=10s
 StateDirectory=abls-agent-server
 WorkingDirectory=/var/lib/abls-agent-server
 

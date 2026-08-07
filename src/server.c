@@ -46,7 +46,7 @@
     if (!path)
      { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
             "package '%s' not found. Install in progress.", chaine );
-       Thread_shell_queue ( Agent, "AGENT-INSTALL", "sudo -n %s install %s", (Agent->is_apt ? "apt" : "dnf"), chaine );
+       Thread_shell_queue ( Agent, "AGENT-INSTALL", "sudo -n %s install -y %s", (Agent->is_apt ? "apt" : "dnf"), chaine );
      } else g_free(path);
     g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", agent_classe, agent_tech_id );
     Thread_shell_queue ( Agent, "AGENT-ENABLE", "sudo -n systemctl enable --now %s", chaine );
@@ -168,8 +168,13 @@
            { if(classe)
               { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to RESTART %s (class %s)", target, classe );
-                g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
-                Thread_shell_queue ( Agent, "AGENT-RESTART", "sudo -n systemctl restart %s", chaine );}
+                if (g_strcmp0 ( target, Agent->agent_tech_id ) == 0)
+                 { Agent->Agent_run = AGENT_NEED_TO_RESTART; }
+                else
+                 { g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
+                   Thread_shell_queue ( Agent, "AGENT-RESTART", "sudo -n systemctl restart %s", chaine );
+                 }
+               }
              else
               { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to RESTART %s, but classe not provided", target );
@@ -181,9 +186,11 @@
               { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
                       "API is asking to UPGRADE %s (class %s)", target, classe );
                 g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", classe );
-                Thread_shell_queue ( Agent, "AGENT-UPGRADE", "sudo -n %s %s %s -y", (Agent->is_apt ? "apt" : "dnf"), (Agent->is_apt ? "update" : "upgrade"), chaine );
-                g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
-                Thread_shell_queue ( Agent, "AGENT-RESTART", "sudo -n systemctl restart %s", chaine );
+                Thread_shell_queue ( Agent, "AGENT-UPGRADE", "sudo -n %s %s -y %s", (Agent->is_apt ? "apt" : "dnf"), (Agent->is_apt ? "update" : "upgrade"), chaine );
+                if (g_strcmp0 ( target, Agent->agent_tech_id ) != 0)
+                 { g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
+                   Thread_shell_queue ( Agent, "AGENT-RESTART", "sudo -n systemctl restart %s", chaine );
+                 }
               }
              else
               { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
