@@ -5,12 +5,15 @@ if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
   systemctl daemon-reload >/dev/null 2>&1 || true
 fi
 
-# Suppression de l'utilisateur abls-agent-server
-if getent passwd abls-agent-server >/dev/null 2>&1; then
-  userdel abls-agent-server >/dev/null 2>&1 || true
-fi
+# Nettoyage uniquement en remove/purge, pas en upgrade.
+if [ "${1:-}" = "remove" ] || [ "${1:-}" = "purge" ]; then
+  # Suppression de l'utilisateur abls-agent-server
+  if getent passwd abls-agent-server >/dev/null 2>&1; then
+    userdel abls-agent-server >/dev/null 2>&1 || true
+  fi
 
-# Suppression du repertoire de travail
-rm -rf /var/lib/abls-agent-server >/dev/null 2>&1 || true
+  # Suppression du repertoire de travail
+  rm -rf /var/lib/abls-agent-server >/dev/null 2>&1 || true
+fi
 
 exit 0
