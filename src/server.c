@@ -36,9 +36,11 @@
 /******************************************************************************************************************************/
  static void Start_one_agent ( gchar *agent_classe, gchar *agent_tech_id )
   { if (!agent_classe || !agent_tech_id) return;
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Starting %s (class %s)", agent_tech_id, agent_classe );
 
+    if (g_strcmp0 ( agent_classe,  Agent->agent_classe  ) == 0) return; /* On ne peut pas demarrer l'agent server sur lui-meme */
     if (g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0) return; /* On ne peut pas demarrer l'agent server sur lui-meme */
+
+    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Starting %s (class %s)", agent_tech_id, agent_classe );
 
     gchar chaine[256];
     g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", agent_classe );
@@ -46,11 +48,22 @@
     if (!path)
      { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
             "package '%s' not found. Install in progress.", chaine );
-       Thread_shell_queue ( Agent, "AGENT-INSTALL", "sudo -n %s install -y %s", (Agent->is_apt ? "apt" : "dnf"), chaine );
+       Run_shell ( "sudo -n %s install -y abls-agent-%s", (Agent->is_apt ? "apt" : "dnf"), agent_classe );
      } else g_free(path);
-    g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", agent_classe, agent_tech_id );
-    Thread_shell_queue ( Agent, "AGENT-ENABLE", "sudo -n systemctl enable --now %s", chaine );
+    Run_shell ( "sudo -n systemctl enable --now abls-agent-%s@%s", agent_classe, agent_tech_id );
     Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "%s (class %s) is starting", agent_tech_id, agent_classe );
+  }
+/******************************************************************************************************************************/
+/* Start_one_agent_by_api_message_thread: Lance un agent depuis une demande de l'API                                          */
+/* Entrée: le message api                                                                                                     */
+/* Sortie: aucune                                                                                                             */
+/******************************************************************************************************************************/
+ static gpointer Start_one_agent_by_api_message_thread ( gpointer thread_data )
+  { JsonNode *mqtt_api_message = thread_data;
+    if (!mqtt_api_message) return(NULL);
+    Start_one_agent ( Json_get_string ( mqtt_api_message, "mqtt_topic_lvl2" ), Json_get_string ( mqtt_api_message, "agent_tech_id" ) );
+    Json_unref ( mqtt_api_message );
+    return(NULL);
   }
 /******************************************************************************************************************************/
 /* Start_agents_by_array: Installe et demarre les agents contenus dans un tableau JSON                                        */
@@ -79,10 +92,7 @@
 
     g_mkdir ( "Dls", 0755 );                                                                    /* Creation du repertoire DLS */
 
-    Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/+/UPGRADE", Agent->domain_uuid );  /* Pour installer les agents sur le server */
-    Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/+/RESTART", Agent->domain_uuid );
-    Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/+/STOP",    Agent->domain_uuid );
-    Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/+/START",   Agent->domain_uuid );
+    Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/+/START",   Agent->domain_uuid );  /* Pour installer les agents sur le server */
 
     Mqtt_subscribe ( Agent->mqtt_local, "SET_AI/#" );
     Mqtt_subscribe ( Agent->mqtt_local, "SET_DI/#" );
@@ -133,70 +143,13 @@
 /****************************************************** Ecoute de l'api *******************************************************/
        JsonNode *mqtt_api_message;
        while ( (mqtt_api_message = Agent_get_mqtt_api_message ( Agent ) ) != NULL )
-        { gchar chaine[256];
-          gchar *target = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl2" );
-          gchar *classe = Json_get_string ( mqtt_api_message, "agent_classe" );
-/*------------------------------------------------------------ Stop ----------------------------------------------------------*/
-          if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "STOP" ) )
-           { if(classe)
-              { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
-                      "API is asking to STOP %s (class %s)", target, classe );
-                if (g_strcmp0 ( target, Agent->agent_tech_id ) == 0)
-                 { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR,
-                         "Cannot self stop this agent-server. keep Running." );
-                 }
-                else
-                 { g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
-                   Thread_shell_queue ( Agent, "AGENT-DISABLE", "sudo -n systemctl disable --now %s", chaine, NULL );
-                 }
-              }
-             else
-              { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
-                      "API is asking to STOP %s, but classe not provided", target );
-              }
-           }
+        {
 /*------------------------------------------------------------ Start ---------------------------------------------------------*/
-          else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "START" ) )
-           { if(classe) Start_one_agent ( classe, target );
-             else
-              { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
-                      "API is asking to START %s, but classe not provided", target );
-              }
-           }
-/*------------------------------------------------------------ Restart -------------------------------------------------------*/
-          else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "RESTART" ) )
-           { if(classe)
-              { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
-                      "API is asking to RESTART %s (class %s)", target, classe );
-                if (g_strcmp0 ( target, Agent->agent_tech_id ) == 0)
-                 { Agent->Agent_run = AGENT_NEED_TO_RESTART; }
-                else
-                 { g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
-                   Thread_shell_queue ( Agent, "AGENT-RESTART", "sudo -n systemctl restart %s", chaine );
-                 }
-               }
-             else
-              { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
-                      "API is asking to RESTART %s, but classe not provided", target );
-              }
+          if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "START" ) )
+           { Json_ref ( mqtt_api_message );
+             Run_thread_detached ( "Start one agent", Start_one_agent_by_api_message_thread, mqtt_api_message );
            }
 /*------------------------------------------------------------ Upgrade -------------------------------------------------------*/
-          else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "UPGRADE" ) )
-           { if(classe)
-              { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
-                      "API is asking to UPGRADE %s (class %s)", target, classe );
-                g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", classe );
-                Thread_shell_queue ( Agent, "AGENT-UPGRADE", "sudo -n %s %s -y %s", (Agent->is_apt ? "apt" : "dnf"), (Agent->is_apt ? "update" : "upgrade"), chaine );
-                if (g_strcmp0 ( target, Agent->agent_tech_id ) != 0)
-                 { g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s@%s", classe, target );
-                   Thread_shell_queue ( Agent, "AGENT-RESTART", "sudo -n systemctl restart %s", chaine );
-                 }
-              }
-             else
-              { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
-                      "API is asking to UPGRADE %s, but classe not provided", target );
-              }
-           }
           else if ( Mqtt_topic_is ( mqtt_api_message, 2, "+", "DLS", "REMAP" ) )
            { MAP_Remap(); }
           else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "DLS", "+", "RELOAD" ) )
