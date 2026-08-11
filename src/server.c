@@ -35,7 +35,10 @@
 /* Sortie: aucune                                                                                                             */
 /******************************************************************************************************************************/
  static void Start_one_agent ( gchar *agent_classe, gchar *agent_tech_id )
-  { if (!agent_classe || !agent_tech_id) return;
+  { if (!agent_classe || !agent_tech_id)
+     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR, "Error, agent_classe or agent_tech_id is missing" );
+       return;
+     }
 
     if (g_strcmp0 ( agent_classe,  Agent->agent_classe  ) == 0) return; /* On ne peut pas demarrer l'agent server sur lui-meme */
     if (g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0) return; /* On ne peut pas demarrer l'agent server sur lui-meme */
@@ -50,7 +53,8 @@
             "package '%s' not found. Install in progress.", chaine );
        Run_shell ( "sudo -n %s install -y abls-agent-%s", (Agent->is_apt ? "apt" : "dnf"), agent_classe );
      } else g_free(path);
-    Run_shell ( "sudo -n systemctl enable --now abls-agent-%s@%s", agent_classe, agent_tech_id );
+    Run_shell ( "sudo -n systemctl enable abls-agent-%s@%s", agent_classe, agent_tech_id );
+    Run_shell ( "sudo -n systemctl start abls-agent-%s@%s", agent_classe, agent_tech_id );
     Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "%s (class %s) is starting", agent_tech_id, agent_classe );
   }
 /******************************************************************************************************************************/
@@ -60,8 +64,11 @@
 /******************************************************************************************************************************/
  static gpointer Start_one_agent_by_api_message_thread ( gpointer thread_data )
   { JsonNode *mqtt_api_message = thread_data;
-    if (!mqtt_api_message) return(NULL);
-    Start_one_agent ( Json_get_string ( mqtt_api_message, "mqtt_topic_lvl2" ), Json_get_string ( mqtt_api_message, "agent_tech_id" ) );
+    if (!mqtt_api_message)
+     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR, "Error, thread_data is NULL" );
+       return(NULL);
+     }
+    Start_one_agent ( Json_get_string ( mqtt_api_message, "agent_classe" ), Json_get_string ( mqtt_api_message, "mqtt_topic_lvl2" ) );
     Json_unref ( mqtt_api_message );
     return(NULL);
   }
@@ -92,7 +99,7 @@
 
     g_mkdir ( "Dls", 0755 );                                                                    /* Creation du repertoire DLS */
 
-    Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/+/START",   Agent->domain_uuid );  /* Pour installer les agents sur le server */
+    Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/+/START", Agent->domain_uuid );    /* Pour installer les agents sur le server */
 
     Mqtt_subscribe ( Agent->mqtt_local, "SET_AI/#" );
     Mqtt_subscribe ( Agent->mqtt_local, "SET_DI/#" );
@@ -150,13 +157,13 @@
              Run_thread_detached ( "Start one agent", Start_one_agent_by_api_message_thread, mqtt_api_message );
            }
 /*------------------------------------------------------------ Upgrade -------------------------------------------------------*/
-          else if ( Mqtt_topic_is ( mqtt_api_message, 2, "+", "DLS", "REMAP" ) )
+          else if ( Mqtt_topic_is ( mqtt_api_message, 3, "+", "DLS", "REMAP" ) )
            { MAP_Remap(); }
           else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "DLS", "+", "RELOAD" ) )
            { gchar *target = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl2" );
              Dls_Reload_un_plugin ( target );
            }
-          else if ( Mqtt_topic_is ( mqtt_api_message, 2, "+", "DLS", "RELOAD_HORLOGE_TICK" ) )
+          else if ( Mqtt_topic_is ( mqtt_api_message, 3, "+", "DLS", "RELOAD_HORLOGE_TICK" ) )
            { Dls_Load_horloge_ticks(); }
           else Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "API sent unknown command %s", Json_get_string ( mqtt_api_message, "mqtt_topic" ) );
           Json_unref (mqtt_api_message);
