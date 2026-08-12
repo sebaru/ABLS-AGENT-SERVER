@@ -6,8 +6,12 @@ After=network-online.target
 [Service]
 Type=simple
 ExecStart=/usr/bin/abls-agent-server
-Restart=on-failure
-RestartSec=5s
+User=abls-agent-server
+Group=abls
+Restart=always
+RestartSec=10s
+StateDirectory=abls-agent-server
+WorkingDirectory=/var/lib/abls-agent-server
 
 [Install]
 WantedBy=multi-user.target

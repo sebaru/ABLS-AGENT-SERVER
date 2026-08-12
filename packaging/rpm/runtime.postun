@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+
+if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+  systemctl daemon-reload >/dev/null 2>&1 || true
+fi
+
+# Nettoyage uniquement en suppression finale RPM ($1=0), pas en upgrade.
+if [ "${1:-0}" -eq 0 ]; then
+  # Suppression de l'utilisateur abls-agent-server
+  if getent passwd abls-agent-server >/dev/null 2>&1; then
+    userdel abls-agent-server >/dev/null 2>&1 || true
+  fi
+
+  # Suppression du repertoire de travail
+  rm -rf /var/lib/abls-agent-server >/dev/null 2>&1 || true
+fi
+
+exit 0

@@ -1,0 +1,271 @@
+/******************************************************************************************************************************/
+/* ABLS-AGENT-DLS/src/The_dls_VISUEL.c             Gestion des visuels                                                             */
+/* Projet Abls-Habitat version 4.7       Gestion d'habitat                                                22.03.2017 10:29:53 */
+/* Auteur: LEFEVRE Sebastien                                                                                                  */
+/******************************************************************************************************************************/
+/*
+ * The_dls_VISUEL.c
+ * This file is part of Abls-Habitat
+ *
+ * Copyright (C) 1988-2026 - Sébastien LEFÈVRE
+ *
+ * ABLS-AGENT-DLS is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * ABLS-AGENT-DLS is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with ABLS-AGENT-DLS; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor,
+ * Boston, MA  02110-1301  USA
+ */
+
+ #include "dls.h"
+
+/******************************************************************************************************************************/
+/* Dls_data_VISUEL_create_by_array : Création d'un VISUEL pour le plugin                                                      */
+/* Entrée : l'acronyme, le tech_id et le pointeur de raccourci                                                                */
+/******************************************************************************************************************************/
+ void Dls_data_VISUEL_create_by_array ( JsonArray *array, guint index, JsonNode *element, gpointer user_data )
+  { struct DLS_PLUGIN *plugin = user_data;
+    gchar *tech_id  = Json_get_string ( element, "tech_id" );
+    gchar *acronyme = Json_get_string ( element, "acronyme" );
+    struct DLS_VISUEL *bit = g_try_malloc0 ( sizeof(struct DLS_VISUEL) );
+    if (!bit)
+    { Info( __func__, "dls", plugin->tech_id, LOG_ERR, "Memory error for '%s:%s'", tech_id, acronyme );
+       return;
+     }
+    g_snprintf( bit->tech_id,  sizeof(bit->tech_id),  "%s", tech_id );
+    g_snprintf( bit->acronyme, sizeof(bit->acronyme), "%s", acronyme );
+    g_snprintf( bit->libelle,  sizeof(bit->libelle),  "%s", Json_get_string ( element, "libelle" ) );
+    g_snprintf( bit->forme,    sizeof(bit->forme),    "%s", Json_get_string ( element, "forme" ) );
+    plugin->Dls_data_VISUEL = g_slist_prepend ( plugin->Dls_data_VISUEL, bit );
+    Info( __func__, "dls", plugin->tech_id, LOG_INFO,
+              "Create bit DLS_VISUEL '%s:%s' (%s)", bit->tech_id, bit->acronyme, bit->libelle );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_VISUEL_lookup: Recherche un VISUEL dans les plugins DLS                                                           */
+/* Entrée: le tech_id, l'acronyme                                                                                             */
+/* Sortie : Néant                                                                                                             */
+/******************************************************************************************************************************/
+ struct DLS_VISUEL *Dls_data_VISUEL_lookup ( gchar *tech_id, gchar *acronyme )
+  { if (!(tech_id && acronyme)) return(NULL);
+    GSList *plugins = Agent_vars->Dls_plugins;
+    while (plugins)
+     { struct DLS_PLUGIN *plugin = plugins->data;
+       if (!strcasecmp( plugin->tech_id, tech_id ))
+        { GSList *liste = plugin->Dls_data_VISUEL;
+          while (liste)
+           { struct DLS_VISUEL *bit = liste->data;
+             if ( !strcasecmp ( bit->acronyme, acronyme ) ) return(bit);
+             liste = g_slist_next(liste);
+           }
+        }
+       plugins = g_slist_next(plugins);
+     }
+    return(NULL);
+  }
+/******************************************************************************************************************************/
+/* Dls_data_VISUEL_set : Gestion du positionnement des visuels en mode dynamique                                              */
+/* Entrée : l'acronyme, le owner dls, un pointeur de raccourci, et la valeur on ou off de la tempo                            */
+/******************************************************************************************************************************/
+ void Dls_data_VISUEL_set ( struct DLS_PLUGIN *plugin, struct DLS_VISUEL *visu,
+                            gdouble valeur, gboolean cligno, gboolean noshow, gboolean disable )
+  { if (!visu) return;
+    if (    visu->cligno  != cligno
+         || visu->noshow  != noshow
+         || visu->disable != disable
+         || visu->valeur  != valeur
+       )
+     { visu->valeur  = valeur;
+       visu->cligno  = cligno;
+       visu->noshow  = noshow;
+       visu->disable = disable;
+       visu->changed = TRUE;
+      Info( __func__, "dls", visu->tech_id, LOG_DEBUG,
+                 "ligne %04d: Changing DLS_VISUEL '%s:%s'-> mode='%s' color='%s' valeur='%f' ('%s') "
+                 "cligno=%d noshow=%d libelle='%s', disable=%d",
+                 (plugin ? plugin->num_ligne : -1), visu->tech_id, visu->acronyme,
+                  visu->mode, visu->color, visu->valeur, visu->unite, visu->cligno, visu->noshow, visu->libelle, visu->disable );
+       Agent_vars->audit_bit_interne_per_sec++;
+     }
+  }
+/******************************************************************************************************************************/
+/* Dls_data_VISUEL_set_badge : Gestion du badge d'un visuel                                                                   */
+/* Entrée : l'acronyme, le owner dls, un pointeur de raccourci, et la valeur                                                  */
+/******************************************************************************************************************************/
+ void Dls_data_VISUEL_set_badge ( struct DLS_PLUGIN *plugin, struct DLS_VISUEL *visu, gchar *badge )
+  { if (!visu) return;
+    if ( badge != visu->badge )                                      /* Comparaison possible car les chaines sont statiques ! */
+     { visu->badge = badge;
+       visu->changed = TRUE;
+      Info( __func__, "dls", visu->tech_id, LOG_DEBUG,
+                 "ligne %04d: Changing DLS_VISUEL '%s:%s'-> badge='%s'",
+                 (plugin ? plugin->num_ligne : -1), visu->tech_id, visu->acronyme, badge );
+     }
+  }
+/******************************************************************************************************************************/
+/* Dls_data_VISUEL_set_mode : Gestion du mode d'un visuel                                                                     */
+/* Entrée : l'acronyme, le owner dls, un pointeur de raccourci, et la valeur                                                  */
+/******************************************************************************************************************************/
+ void Dls_data_VISUEL_set_mode ( struct DLS_PLUGIN *plugin, struct DLS_VISUEL *visu, gchar *mode )
+  { if (!visu) return;
+    if ( mode != visu->mode )                                      /* Comparaison possible car les chaines sont statiques ! */
+     { visu->mode = mode;
+       visu->changed = TRUE;
+      Info( __func__, "dls", visu->tech_id, LOG_DEBUG,
+                 "ligne %04d: Changing DLS_VISUEL '%s:%s'-> mode='%s'",
+                 (plugin ? plugin->num_ligne : -1), visu->tech_id, visu->acronyme, mode );
+     }
+  }
+/******************************************************************************************************************************/
+/* Dls_data_VISUEL_set_color : Gestion du color d'un visuel                                                                   */
+/* Entrée : l'acronyme, le owner dls, un pointeur de raccourci, et la valeur                                                  */
+/******************************************************************************************************************************/
+ void Dls_data_VISUEL_set_color ( struct DLS_PLUGIN *plugin, struct DLS_VISUEL *visu, gchar *color )
+  { if (!visu) return;
+    if ( color != visu->color )                                      /* Comparaison possible car les chaines sont statiques ! */
+     { visu->color = color;
+       visu->changed = TRUE;
+      Info( __func__, "dls", visu->tech_id, LOG_DEBUG,
+                 "ligne %04d: Changing DLS_VISUEL '%s:%s'-> color='%s'",
+                 (plugin ? plugin->num_ligne : -1), visu->tech_id, visu->acronyme, color );
+     }
+  }
+/******************************************************************************************************************************/
+/* Dls_data_VISUEL_set_libelle : Gestion du libelle d'un visuel                                                               */
+/* Entrée : l'acronyme, le owner dls, un pointeur de raccourci, et la valeur                                                  */
+/******************************************************************************************************************************/
+ void Dls_data_VISUEL_set_libelle ( struct DLS_PLUGIN *plugin, struct DLS_VISUEL *visu, gchar *libelle )
+  { if (!visu) return;
+    if ( libelle != visu->libelle )                                  /* Comparaison possible car les chaines sont statiques ! */
+     { visu->libelle = libelle;
+       visu->changed = TRUE;
+      Info( __func__, "dls", visu->tech_id, LOG_DEBUG,
+                 "ligne %04d: Changing DLS_VISUEL '%s:%s'-> libelle='%s'",
+                 (plugin ? plugin->num_ligne : -1), visu->tech_id, visu->acronyme, libelle );
+     }
+  }
+/******************************************************************************************************************************/
+/* Dls_data_VISUEL_set_for_AI : Met un jour un visuel accroché a une entrée analogique                                        */
+/* Entrée : le dls en cours, le visuel, le registre et les parametres du visuel                                               */
+/******************************************************************************************************************************/
+ void Dls_data_VISUEL_set_for_AI ( struct DLS_PLUGIN *plugin, struct DLS_VISUEL *visu, struct DLS_AI *src,
+                                   gboolean cligno, gboolean noshow, gboolean disable )
+  { if (!visu) return;
+    if (!src) return;
+
+    gboolean in_range = Dls_data_AI_get_inrange( src );
+    gint valeur       = Dls_data_AI_get ( src );
+    g_snprintf( visu->unite, sizeof(visu->unite), "%s", src->unite );
+    Dls_data_VISUEL_set ( plugin, visu, 1.0*valeur, (in_range ? cligno : TRUE), noshow, disable );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_VISUEL_set_for_CI : Met un jour un visuel accroché a un compteur d'impulsion                                      */
+/* Entrée : le dls en cours, le visuel, le registre et les parametres du visuel                                               */
+/******************************************************************************************************************************/
+ void Dls_data_VISUEL_set_for_CI ( struct DLS_PLUGIN *plugin, struct DLS_VISUEL *visu, struct DLS_CI *src,
+                                   gboolean cligno, gboolean noshow, gboolean disable )
+  { if (!visu) return;
+    if (!src) return;
+
+    gint valeur   = Dls_data_CI_get ( src );
+    g_snprintf( visu->unite, sizeof(visu->unite), "%s", src->unite );
+    Dls_data_VISUEL_set ( plugin, visu, 1.0*valeur, cligno, noshow, disable );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_VISUEL_set_for_CH : Met un jour un visuel accroché a un compteur d'impulsion                                      */
+/* Entrée : le dls en cours, le visuel, le registre et les parametres du visuel                                               */
+/******************************************************************************************************************************/
+ void Dls_data_VISUEL_set_for_CH ( struct DLS_PLUGIN *plugin, struct DLS_VISUEL *visu, struct DLS_CH *src,
+                                   gboolean cligno, gboolean noshow, gboolean disable )
+  { if (!visu) return;
+    if (!src) return;
+
+    gint valeur   = Dls_data_CH_get ( src );
+    g_snprintf( visu->unite, sizeof(visu->unite), "s" );
+    Dls_data_VISUEL_set ( plugin, visu, 1.0*valeur, cligno, noshow, disable );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_VISUEL_set_for_REGISTRE : Met un jour un visuel accroché a un registre                                            */
+/* Entrée : le dls en cours, le visuel, le registre et les parametres du visuel                                               */
+/******************************************************************************************************************************/
+ void Dls_data_VISUEL_set_for_REGISTRE ( struct DLS_PLUGIN *plugin, struct DLS_VISUEL *visu, struct DLS_REGISTRE *src,
+                                         gboolean cligno, gboolean noshow, gboolean disable )
+  { if (!visu) return;
+    if (!src) return;
+
+    gdouble valeur = Dls_data_REGISTRE_get ( src );
+    g_snprintf( visu->unite, sizeof(visu->unite), "%s", src->unite );
+    Dls_data_VISUEL_set ( plugin, visu, valeur, cligno, noshow, disable );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_VISUEL_set_for_WATCHDOG : Met un jour un visuel accroché a un watchdog                                            */
+/* Entrée : le dls en cours, le visuel, le watchdog et les parametres du visuel                                               */
+/******************************************************************************************************************************/
+ void Dls_data_VISUEL_set_for_WATCHDOG ( struct DLS_PLUGIN *plugin, struct DLS_VISUEL *visu, struct DLS_WATCHDOG *src,
+                                         gboolean cligno, gboolean noshow, gboolean disable )
+  { if (!visu) return;
+    if (!src) return;
+
+    gdouble valeur = Dls_data_WATCHDOG_get_time ( src );
+    g_snprintf( visu->unite, sizeof(visu->unite), "s" );
+    Dls_data_VISUEL_set ( plugin, visu, valeur, cligno, noshow, disable );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_VISUEL_set_for_TEMPO : Met un jour un visuel accroché a une temporisation                                         */
+/* Entrée : le dls en cours, le visuel, la temporisation et les parametres du visuel                                          */
+/******************************************************************************************************************************/
+ void Dls_data_VISUEL_set_for_TEMPO ( struct DLS_PLUGIN *plugin, struct DLS_VISUEL *visu, struct DLS_TEMPO *src,
+                                      gboolean cligno, gboolean noshow, gboolean disable )
+  { if (!visu) return;
+    if (!src) return;
+
+    gdouble valeur = Dls_data_TEMPO_get_time ( src );
+    g_snprintf( visu->unite, sizeof(visu->unite), "s" );
+    Dls_data_VISUEL_set ( plugin, visu, valeur, cligno, noshow, disable );
+  }
+/******************************************************************************************************************************/
+/* Dls_VISUEL_to_json : Formate un bit au format JSON                                                                         */
+/* Entrées: le JsonNode et le bit                                                                                             */
+/* Sortie : néant                                                                                                             */
+/******************************************************************************************************************************/
+ void Dls_VISUEL_to_json ( JsonNode *RootNode, struct DLS_VISUEL *bit )
+  { Json_add_string ( RootNode, "tech_id",   bit->tech_id );
+    Json_add_string ( RootNode, "acronyme",  bit->acronyme );
+    Json_add_string ( RootNode, "mode",      bit->mode  );
+    Json_add_string ( RootNode, "color",     bit->color );
+    Json_add_double ( RootNode, "valeur",    bit->valeur );
+    Json_add_bool   ( RootNode, "cligno",    bit->cligno );
+    Json_add_bool   ( RootNode, "noshow",    bit->noshow );
+    Json_add_bool   ( RootNode, "disable",   bit->disable );
+    Json_add_string ( RootNode, "libelle",   bit->libelle );
+    Json_add_string ( RootNode, "badge",     bit->badge );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_VISUEL_apply: Met à jour les visuels du plugin                                                                    */
+/* Sortie : Néant                                                                                                             */
+/******************************************************************************************************************************/
+ void Dls_data_VISUEL_apply ( struct DLS_PLUGIN *plugin )
+  { if (!plugin) return;
+
+    GSList *liste = plugin->Dls_data_VISUEL;
+    while ( liste )
+     { struct DLS_VISUEL *visu = liste->data;
+       if (visu->changed && (Agent->Top >= visu->next_send))
+        { g_rw_lock_writer_lock( &Agent_vars->Liste_visuel_synchro );                      /* Ajout dans la liste de i a traiter */
+          Agent_vars->Liste_visuel = g_slist_append( Agent_vars->Liste_visuel, visu );
+          g_rw_lock_writer_unlock( &Agent_vars->Liste_visuel_synchro );
+          visu->changed = FALSE;
+          visu->next_send = Agent->Top + 10;                                                  /* Next update dans 1 seconde */
+          Agent_vars->audit_bit_interne_per_sec++;
+        }
+       liste = g_slist_next(liste);
+     }
+  }
+/*----------------------------------------------------------------------------------------------------------------------------*/

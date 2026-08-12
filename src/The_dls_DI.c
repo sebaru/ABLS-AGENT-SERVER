@@ -1,0 +1,201 @@
+/******************************************************************************************************************************/
+/* ABLS-AGENT-DLS/src/The_dls_DI.c  Gestion des Analog Input                                                                       */
+/* Projet Abls-Habitat version 4.7       Gestion d'habitat                                                30.01.2022 14:07:24 */
+/* Auteur: LEFEVRE Sebastien                                                                                                  */
+/******************************************************************************************************************************/
+/*
+ * The_dls_DI.c
+ * This file is part of Abls-Habitat
+ *
+ * Copyright (C) 1988-2026 - Sébastien LEFÈVRE
+ *
+ * ABLS-AGENT-DLS is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * ABLS-AGENT-DLS is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more detdils.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with ABLS-AGENT-DLS; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor,
+ * Boston, MA  02110-1301  USA
+ */
+
+ #include "dls.h"
+
+/******************************************************************************************************************************/
+/* Dls_data_DI_create_by_array : Création d'un DI pour le plugin                                                              */
+/* Entrée : l'acronyme, le tech_id et le pointeur de raccourci                                                                */
+/******************************************************************************************************************************/
+ void Dls_data_DI_create_by_array ( JsonArray *array, guint index, JsonNode *element, gpointer user_data )
+  { struct DLS_PLUGIN *plugin = user_data;
+    gchar *tech_id  = Json_get_string ( element, "tech_id" );
+    gchar *acronyme = Json_get_string ( element, "acronyme" );
+    struct DLS_DI *bit = g_try_malloc0 ( sizeof(struct DLS_DI) );
+    if (!bit)
+    { Info( __func__, "dls", tech_id, LOG_ERR, "Memory error for '%s:%s'", tech_id, acronyme );
+       return;
+     }
+    g_snprintf( bit->tech_id,  sizeof(bit->tech_id),  "%s", tech_id );
+    g_snprintf( bit->acronyme, sizeof(bit->acronyme), "%s", acronyme );
+    g_snprintf( bit->libelle,  sizeof(bit->libelle),  "%s", Json_get_string ( element, "libelle" ) );
+    bit->archivage = Json_get_int ( element, "archivage" );
+    bit->etat      = Json_get_bool ( element, "etat" );
+    plugin->Dls_data_DI = g_slist_prepend ( plugin->Dls_data_DI, bit );
+    Info( __func__, "dls", tech_id, LOG_INFO,
+              "Create bit DLS_DI '%s:%s'=%d (%s) archivage=%d",
+               bit->tech_id, bit->acronyme, bit->etat, bit->libelle, bit->archivage );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_DI_lookup: Recherche un DI dans les plugins DLS                                                                   */
+/* Entrée: le tech_id, l'acronyme                                                                                             */
+/* Sortie : Néant                                                                                                             */
+/******************************************************************************************************************************/
+ struct DLS_DI *Dls_data_DI_lookup ( gchar *tech_id, gchar *acronyme )
+  { if (!(tech_id && acronyme)) return(NULL);
+    GSList *plugins = Agent_vars->Dls_plugins;
+    while (plugins)
+     { struct DLS_PLUGIN *plugin = plugins->data;
+       if (!strcasecmp( plugin->tech_id, tech_id ))
+        { GSList *liste = plugin->Dls_data_DI;
+          while (liste)
+           { struct DLS_DI *bit = liste->data;
+             if ( !strcasecmp ( bit->acronyme, acronyme ) ) return(bit);
+             liste = g_slist_next(liste);
+           }
+        }
+       plugins = g_slist_next(plugins);
+     }
+    return(NULL);
+  }
+/******************************************************************************************************************************/
+/* Dls_data_DI_get : Recupere la valeur de l'EA en parametre                                                                  */
+/* Entrée : l'acronyme, le tech_id et le pointeur de raccourci                                                                */
+/******************************************************************************************************************************/
+ gboolean Dls_data_DI_get ( struct DLS_DI *bit )
+  { if (!bit) return(FALSE);
+    return( bit->etat );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_DI_get : Recupere la valeur de l'EA en parametre                                                                  */
+/* Entrée : l'acronyme, le tech_id et le pointeur de raccourci                                                                */
+/******************************************************************************************************************************/
+ gboolean Dls_data_DI_get_up ( struct DLS_DI *bit )
+  { if (!bit) return(FALSE);
+    return( bit->edge_up );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_DI_get : Recupere la valeur de l'EA en parametre                                                                  */
+/* Entrée : l'acronyme, le tech_id et le pointeur de raccourci                                                                */
+/******************************************************************************************************************************/
+ gboolean Dls_data_DI_get_down ( struct DLS_DI *bit )
+  { if (!bit) return(FALSE);
+    return( bit->edge_down );
+  }
+/******************************************************************************************************************************/
+/* Met à jour l'entrée analogique num à partir de sa valeur avant mise a l'echelle                                            */
+/* Sortie : Néant                                                                                                             */
+/******************************************************************************************************************************/
+ void Dls_data_DI_set ( struct DLS_DI *bit, gboolean valeur )
+  { if (!bit) return;
+
+    if (bit->etat != valeur)
+     { bit->etat = valeur;
+      Info( __func__, "dls", bit->tech_id, LOG_NOTICE, "Changing DLS_DI '%s:%s'=%d up %d down %d",
+                 bit->tech_id, bit->acronyme, valeur, bit->edge_up, bit->edge_down );
+        if (valeur) Agent_vars->Set_Dls_DI_Edge_up   = g_slist_prepend ( Agent_vars->Set_Dls_DI_Edge_up,   bit );
+          else Agent_vars->Set_Dls_DI_Edge_down = g_slist_prepend ( Agent_vars->Set_Dls_DI_Edge_down, bit );
+        Agent_vars->audit_bit_interne_per_sec++;
+        Archive_Send_to_API( bit->tech_id, bit->acronyme, bit->etat*1.0 );                         /* Archivage si besoin */
+        bit->last_arch = Agent->Top;
+        Dls_DI_report_to_API ( bit );                                                                        /* envoi a l'API */
+     }
+  }
+/******************************************************************************************************************************/
+/* Dls_data_DI_set_pulse: Envoi une impulsion sur une DI                                                                      */
+/* Sortie : Néant                                                                                                             */
+/******************************************************************************************************************************/
+ void Dls_data_DI_set_pulse ( struct DLS_PLUGIN *plugin, struct DLS_DI *bit )
+  { if (!bit) return;
+     Agent_vars->Set_Dls_Data = g_slist_append ( Agent_vars->Set_Dls_Data, bit );
+    Info( __func__, "dls", bit->tech_id, LOG_NOTICE,
+              "Mise a un du bit DI '%s:%s' demandée", bit->tech_id, bit->acronyme );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_DI_set_from_thread_di: Positionne une DI dans DLS depuis une DI 'thread'                                          */
+/* Entrées: la structure JSON                                                                                                 */
+/* Sortie : TRUE si OK, sinon FALSE                                                                                           */
+/******************************************************************************************************************************/
+ gboolean Dls_data_DI_set_from_thread_di ( JsonNode *request )
+  { if (! (Json_has_member ( request, "agent_tech_id" ) && Json_has_member ( request, "agent_acronyme" ) &&
+           Json_has_member ( request, "etat" )
+          )
+       ) return(FALSE);
+
+    gchar *agent_tech_id  = Json_get_string ( request, "agent_tech_id" );
+    gchar *agent_acronyme = Json_get_string ( request, "agent_acronyme" );
+    gchar *tech_id        = agent_tech_id;
+    gchar *acronyme       = agent_acronyme;
+
+    if (MAP_to_local ( request ))
+     { tech_id  = Json_get_string ( request, "tech_id" );
+       acronyme = Json_get_string ( request, "acronyme" );
+     }
+
+    struct DLS_DI *bit = Dls_data_DI_lookup ( tech_id, acronyme );
+    if (!bit)
+     { Info( __func__, "mqtt", "local", LOG_WARNING, "SET_DI from '%s': '%s:%s'/'%s:%s' not found",
+                 agent_tech_id, agent_tech_id, agent_acronyme, tech_id, acronyme );
+       return(FALSE);
+     }
+
+    Info( __func__, "mqtt", "local", LOG_INFO, "SET_DI from '%s': '%s:%s'/'%s:%s'=%d (%s)",
+              agent_tech_id, agent_tech_id, agent_acronyme, tech_id, acronyme,
+              Json_get_bool ( request, "etat" ), bit->libelle );
+    Dls_data_DI_set ( bit, Json_get_bool ( request, "etat" ) );
+    return(TRUE);
+  }
+/******************************************************************************************************************************/
+/* Dls_DI_to_json : Formate un bit au format JSON                                                                             */
+/* Entrées: le JsonNode et le bit                                                                                             */
+/* Sortie : néant                                                                                                             */
+/******************************************************************************************************************************/
+ void Dls_DI_to_json ( JsonNode *element, struct DLS_DI *bit )
+  { Json_add_string ( element, "tech_id",  bit->tech_id );
+    Json_add_string ( element, "acronyme", bit->acronyme );
+    Json_add_bool   ( element, "etat", bit->etat );
+  }
+/******************************************************************************************************************************/
+/* Dls_all_DI_to_json: Transforme tous les bits en JSON                                                                       */
+/* Entrée: target                                                                                                             */
+/* Sortie: néant                                                                                                              */
+/******************************************************************************************************************************/
+ void Dls_all_DI_to_json ( gpointer array, struct DLS_PLUGIN *plugin )
+  { JsonArray *RootArray = array;
+    GSList *liste = plugin->Dls_data_DI;
+    while ( liste )
+     { struct DLS_DI *bit = liste->data;
+       JsonNode *element = Json_create();
+       Dls_DI_to_json ( element, bit );
+       Json_array_add_element ( RootArray, element );
+       liste = g_slist_next(liste);
+     }
+  }
+/******************************************************************************************************************************/
+/* Dls_DI_report_to_API : Formate un bit au format JSON                                                                       */
+/* Entrées: le JsonNode et le bit                                                                                             */
+/* Sortie : néant                                                                                                             */
+/******************************************************************************************************************************/
+ void Dls_DI_report_to_API ( struct DLS_DI *bit )
+  { JsonNode *element = Json_create ();
+    if (element)
+     { Json_add_bool ( element, "etat", bit->etat );
+       Agent_send_mqtt_api_message ( Agent, element, TRUE, "DLS_REPORT/DI/%s/%s", bit->tech_id, bit->acronyme );
+       Json_unref    ( element );
+     }
+  }
+/*----------------------------------------------------------------------------------------------------------------------------*/

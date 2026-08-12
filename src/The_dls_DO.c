@@ -1,0 +1,177 @@
+/******************************************************************************************************************************/
+/* ABLS-AGENT-DLS/src/The_dls_DO.c        Déclaration des fonctions pour la gestion des Sorties TOR                                */
+/* Projet Abls-Habitat version 4.7       Gestion d'habitat                                                25.03.2019 14:16:22 */
+/* Auteur: LEFEVRE Sebastien                                                                                                  */
+/******************************************************************************************************************************/
+/*
+ * The_dls_DO.c
+ * This file is part of Abls-Habitat
+ *
+ * Copyright (C) 1988-2026 - Sébastien LEFÈVRE
+ *
+ * ABLS-AGENT-DLS is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * ABLS-AGENT-DLS is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with ABLS-AGENT-DLS; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor,
+ * Boston, MA  02110-1301  USA
+ */
+
+ #include "dls.h"
+
+/******************************************************************************************************************************/
+/* Dls_data_DO_create_by_array : Création d'un DO pour le plugin                                                              */
+/* Entrée : l'acronyme, le tech_id et le pointeur de raccourci                                                                */
+/******************************************************************************************************************************/
+ void Dls_data_DO_create_by_array ( JsonArray *array, guint index, JsonNode *element, gpointer user_data )
+  { struct DLS_PLUGIN *plugin = user_data;
+    gchar *tech_id  = Json_get_string ( element, "tech_id" );
+    gchar *acronyme = Json_get_string ( element, "acronyme" );
+    struct DLS_DO *bit = g_try_malloc0 ( sizeof(struct DLS_DO) );
+    if (!bit)
+    { Info( __func__, "dls", tech_id, LOG_ERR, "Memory error for '%s:%s'", tech_id, acronyme );
+       return;
+     }
+    g_snprintf( bit->tech_id,  sizeof(bit->tech_id),  "%s", tech_id );
+    g_snprintf( bit->acronyme, sizeof(bit->acronyme), "%s", acronyme );
+    g_snprintf( bit->libelle,  sizeof(bit->libelle),  "%s", Json_get_string ( element, "libelle" ) );
+    bit->archivage = Json_get_int ( element, "archivage" );
+    bit->etat      = Json_get_bool ( element, "etat" );
+    bit->mono = Json_get_bool ( element, "mono" );
+    plugin->Dls_data_DO = g_slist_prepend ( plugin->Dls_data_DO, bit );
+    Info( __func__, "dls", tech_id, LOG_INFO,
+              "Create bit DLS_DO '%s:%s'=%d (%s) mono=%d  archivage=%d",
+               bit->tech_id, bit->acronyme, bit->etat, bit->libelle, bit->mono, bit->archivage );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_DO_lookup: Recherche un DO dans les plugins DLS                                                                   */
+/* Entrée: le tech_id, l'acronyme                                                                                             */
+/* Sortie : Néant                                                                                                             */
+/******************************************************************************************************************************/
+ struct DLS_DO *Dls_data_DO_lookup ( gchar *tech_id, gchar *acronyme )
+  { if (!(tech_id && acronyme)) return(NULL);
+    GSList *plugins = Agent_vars->Dls_plugins;
+    while (plugins)
+     { struct DLS_PLUGIN *plugin = plugins->data;
+       if (!strcasecmp( plugin->tech_id, tech_id ))
+        { GSList *liste = plugin->Dls_data_DO;
+          while (liste)
+           { struct DLS_DO *bit = liste->data;
+             if ( !strcasecmp ( bit->acronyme, acronyme ) ) return(bit);
+             liste = g_slist_next(liste);
+           }
+        }
+       plugins = g_slist_next(plugins);
+     }
+    return(NULL);
+  }
+/******************************************************************************************************************************/
+/* Dls_data_DO_get: Remonte l'etat d'une sortie tor                                                                           */
+/* Sortie : TRUE sur la sortie est UP                                                                                         */
+/******************************************************************************************************************************/
+ gboolean Dls_data_DO_get ( struct DLS_DO *dout )
+  { if (!dout) return(FALSE);
+    return( dout->etat );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_DO_set: Positionne une bit de sortie TOR                                                                          */
+/* Sortie : néant                                                                                                             */
+/******************************************************************************************************************************/
+ void Dls_data_DO_set ( struct DLS_PLUGIN *plugin, struct DLS_DO *dout, gboolean etat )
+  { if (!dout) return;
+    if (dout->etat == etat) return;
+
+    dout->etat = etat;
+    Info( __func__, "dls", dout->tech_id, LOG_DEBUG,
+              "ligne %04d: Changing DLS_DO '%s:%s'=%d ",
+              (plugin ? plugin->num_ligne : -1), dout->tech_id, dout->acronyme, dout->etat );
+    Dls_DO_report_to_API ( dout );                                                                           /* envoi a l'API */
+    Archive_Send_to_API( dout->tech_id, dout->acronyme, dout->etat*1.0 );                          /* Archivage si besoin */
+    dout->last_arch = Agent->Top;
+
+    JsonNode *RootNode = Json_create ();
+    if (RootNode)
+     { Dls_DO_to_json ( RootNode, dout );
+       g_rw_lock_writer_lock ( &Agent_vars->Liste_DO_synchro );                      /* Envoie au MSRV pour dispatch aux threads */
+       Agent_vars->Liste_DO = g_slist_append ( Agent_vars->Liste_DO, RootNode );
+       g_rw_lock_writer_unlock ( &Agent_vars->Liste_DO_synchro );
+     }
+    else Info( __func__, "dls", dout->tech_id, LOG_ERR, "JSon RootNode creation failed" );
+
+    if (etat == TRUE && dout->mono)                             /* Si sortie de type monostable, elle redescend tout de suite */
+     { JsonNode *RootNode = Json_create ();
+       if (RootNode)
+        { Dls_DO_to_json ( RootNode, dout );
+          Json_add_bool ( RootNode, "etat", FALSE );                                    /* Passage a zero dans la foulée */
+          g_rw_lock_writer_lock ( &Agent_vars->Liste_DO_synchro );                   /* Envoie au MSRV pour dispatch aux threads */
+          Agent_vars->Liste_DO = g_slist_append ( Agent_vars->Liste_DO, RootNode );
+          g_rw_lock_writer_unlock ( &Agent_vars->Liste_DO_synchro );                  /* Envoie au MSRV pour dispatch aux threads */
+        }
+      else Info( __func__, "dls", dout->tech_id, LOG_ERR, "JSon RootNode creation failed" );
+     }
+    Agent_vars->audit_bit_interne_per_sec++;
+  }
+/******************************************************************************************************************************/
+/* Dls_data_DO_get_up: Remonte le front montant d'un boolean                                                                  */
+/* Sortie : TRUE sur le boolean vient de passer à UP                                                                          */
+/******************************************************************************************************************************/
+ gboolean Dls_data_DO_get_up ( struct DLS_DO *dout )
+  { if (!dout) return(FALSE);
+    return( dout->edge_up );
+  }
+/******************************************************************************************************************************/
+/* Dls_data_DO_get_down: Remonte le front descendant d'un boolean                                                             */
+/* Sortie : TRUE sur le boolean vient de passer à DOWN                                                                        */
+/******************************************************************************************************************************/
+ gboolean Dls_data_DO_get_down ( struct DLS_DO *dout )
+  { if (!dout) return(FALSE);
+    return( dout->edge_down );
+  }
+/******************************************************************************************************************************/
+/* Dls_DO_to_json : Formate un bit au format JSON                                                                             */
+/* Entrées: le JsonNode et le bit                                                                                             */
+/* Sortie : néant                                                                                                             */
+/******************************************************************************************************************************/
+ void Dls_DO_to_json ( JsonNode *element, struct DLS_DO *bit )
+  { Json_add_string ( element, "tech_id",  bit->tech_id );
+    Json_add_string ( element, "acronyme", bit->acronyme );
+    Json_add_bool   ( element, "etat",     bit->etat );
+  }
+/******************************************************************************************************************************/
+/* Dls_all_DO_to_json: Transforme tous les bits en JSON                                                                       */
+/* Entrée: target                                                                                                             */
+/* Sortie: néant                                                                                                              */
+/******************************************************************************************************************************/
+ void Dls_all_DO_to_json ( gpointer array, struct DLS_PLUGIN *plugin )
+  { JsonArray *RootArray = array;
+    GSList *liste = plugin->Dls_data_DO;
+    while ( liste )
+     { struct DLS_DO *bit = liste->data;
+       JsonNode *element = Json_create();
+       Dls_DO_to_json ( element, bit );
+       Json_array_add_element ( RootArray, element );
+       liste = g_slist_next(liste);
+     }
+  }
+/******************************************************************************************************************************/
+/* Dls_DO_report_to_API : Formate un bit au format JSON                                                                       */
+/* Entrées: le JsonNode et le bit                                                                                             */
+/* Sortie : néant                                                                                                             */
+/******************************************************************************************************************************/
+ void Dls_DO_report_to_API ( struct DLS_DO *bit )
+  { JsonNode *element = Json_create ();
+    if (element)
+     { Json_add_bool ( element, "etat", bit->etat );
+       Agent_send_mqtt_api_message ( Agent, element, TRUE, "DLS_REPORT/DO/%s/%s", bit->tech_id, bit->acronyme );
+       Json_unref    ( element );
+     }
+  }
+/*----------------------------------------------------------------------------------------------------------------------------*/
