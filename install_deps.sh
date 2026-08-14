@@ -8,7 +8,7 @@ if [ "$(whoami)" != "root" ]
    exit 1
 fi
 
-groupadd abls
+groupadd abls || true
 
 if [ "$SOCLE" = "fedora" ]
  then
