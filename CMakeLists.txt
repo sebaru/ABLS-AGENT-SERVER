@@ -102,6 +102,22 @@ install(FILES packaging/systemd/abls-agent-server.service
   COMPONENT runtime
 )
 
+execute_process(
+  COMMAND pkg-config --variable=systemduserunitdir systemd
+  OUTPUT_VARIABLE ABLS_SYSTEMD_USER_UNIT_INSTALL_DIR
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
+)
+
+if(NOT ABLS_SYSTEMD_USER_UNIT_INSTALL_DIR)
+  set(ABLS_SYSTEMD_USER_UNIT_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/lib/systemd/user")
+endif()
+
+install(FILES packaging/systemd/user/abls-agent-server.service
+  DESTINATION ${ABLS_SYSTEMD_USER_UNIT_INSTALL_DIR}
+  COMPONENT runtime
+)
+
 set(CPACK_PACKAGE_NAME "abls-agent-server")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_RELEASE "1")
@@ -127,8 +143,9 @@ set(CPACK_RPM_RUNTIME_DEBUGINFO_PACKAGE ON)
 set(CPACK_RPM_RUNTIME_DEBUGINFO_FILE_NAME "RPM-DEFAULT")
 set(CPACK_RPM_RUNTIME_BUILD_SOURCE_DIRS_PREFIX "/usr/src/abls/server")
 
+set(ABLS_DEBIAN_GLIB_RUNTIME_DEPEND "libglib2.0-0t64 | libglib2.0-0")
 set(CPACK_DEBIAN_RUNTIME_PACKAGE_NAME "abls-agent-server")
-set(CPACK_DEBIAN_RUNTIME_PACKAGE_DEPENDS "libglib2.0-0, libjson-glib-1.0-0, abls-libs, abls-agent-libs")
+set(CPACK_DEBIAN_RUNTIME_PACKAGE_DEPENDS "${ABLS_DEBIAN_GLIB_RUNTIME_DEPEND}, libjson-glib-1.0-0, abls-libs, abls-agent-libs")
 set(CPACK_DEBIAN_RUNTIME_PACKAGE_SHLIBDEPS ON)
 set(CPACK_DEBIAN_RUNTIME_PACKAGE_CONTROL_EXTRA
   "${CMAKE_SOURCE_DIR}/packaging/deb/postinst"

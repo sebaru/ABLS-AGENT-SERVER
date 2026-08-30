@@ -53,8 +53,10 @@
             "package '%s' not found. Install in progress.", chaine );
        Run_shell ( "sudo -n %s install -y abls-agent-%s", (Agent->is_apt ? "apt" : "dnf"), agent_classe );
      } else g_free(path);
-    Run_shell ( "sudo -n systemctl enable abls-agent-%s@%s", agent_classe, agent_tech_id );
-    Run_shell ( "sudo -n systemctl start abls-agent-%s@%s", agent_classe, agent_tech_id );
+    gchar *commande = "sudo -n systemctl";
+    if (Agent->systemd_is_user) commande = "systemctl --user";
+    Run_shell ( "%s enable abls-agent-%s@%s", commande, agent_classe, agent_tech_id );
+    Run_shell ( "%s start abls-agent-%s@%s", commande, agent_classe, agent_tech_id );
     Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "%s (class %s) is starting", agent_tech_id, agent_classe );
   }
 /******************************************************************************************************************************/

@@ -3,10 +3,26 @@
 set -euo pipefail
 
 PACKAGE_ONLY=false
-NO_SIGN=false
 CLEAN=false
-TARGET_DIST="bookworm"
+TARGET_DIST=""
 TARGET_ARCH=""
+
+detect_host_dist() {
+  local codename=""
+
+  if [[ -r /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    codename="${VERSION_CODENAME:-${DEBIAN_CODENAME:-}}"
+  fi
+
+  if [[ -n "$codename" ]]; then
+    printf '%s\n' "$codename"
+    return 0
+  fi
+
+  printf '%s\n' "bookworm"
+}
 
 usage() {
   cat <<'EOF'
@@ -14,16 +30,15 @@ Usage: ./build_apt.sh [options]
 
 Options:
   --package-only, -p   Skip compilation and only run cpack
-  --no-sign            Skip package signing
   --clean              Remove old .deb artifacts before build
-  --dist <suite>       Target suite label for output path (default: bookworm)
-  --arch <arch>        Target Debian arch (default: host arch)
+  --dist <suite>       Target suite label for output path (default: host OS codename)
   -h, --help           Show this help
 
 Notes:
-- This script uses native build toolchain by default.
-- --dist is used to organize output artifacts only.
-- To sign packages, export DEB_SIGNER_ID and install dpkg-sig.
+- This script builds only the native host architecture.
+- By default, suite is inferred from /etc/os-release (VERSION_CODENAME/DEBIAN_CODENAME).
+- --dist is used for output path only; no version suffix is appended by default.
+- Package signing is centralized in ABLS-PKGS.
 EOF
 }
 
@@ -33,10 +48,6 @@ while [[ $# -gt 0 ]]; do
       PACKAGE_ONLY=true
       shift
       ;;
-    --no-sign)
-      NO_SIGN=true
-      shift
-      ;;
     --clean)
       CLEAN=true
       shift
@@ -44,11 +55,6 @@ while [[ $# -gt 0 ]]; do
     --dist)
       TARGET_DIST="${2:-}"
       [[ -n "$TARGET_DIST" ]] || { echo "Missing value for --dist"; exit 2; }
-      shift 2
-      ;;
-    --arch)
-      TARGET_ARCH="${2:-}"
-      [[ -n "$TARGET_ARCH" ]] || { echo "Missing value for --arch"; exit 2; }
       shift 2
       ;;
     -h|--help)
@@ -65,23 +71,37 @@ done
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$PROJECT_DIR/build"
 
-if [[ -z "$TARGET_ARCH" ]]; then
-  if command -v dpkg >/dev/null 2>&1; then
-    TARGET_ARCH="$(dpkg --print-architecture)"
-  else
-    echo "Error: dpkg not found. Install Debian packaging tools first."
-    exit 1
-  fi
+if ! command -v dpkg >/dev/null 2>&1; then
+  echo "Error: dpkg not found. Install Debian packaging tools first."
+  exit 1
 fi
 
-ARTIFACT_DIR="$BUILD_DIR/deb/$TARGET_DIST/$TARGET_ARCH"
+host_arch="$(dpkg --print-architecture)"
+if [[ -z "$TARGET_ARCH" ]]; then
+  TARGET_ARCH="$host_arch"
+elif [[ "$TARGET_ARCH" != "$host_arch" ]]; then
+  echo "Error: cross compilation disabled. Host arch is '$host_arch', requested '$TARGET_ARCH'." >&2
+  exit 1
+fi
+
+if [[ -z "$TARGET_DIST" ]]; then
+  TARGET_DIST="$(detect_host_dist)"
+fi
+
+
+BUILD_DIR="$PROJECT_DIR/build/$TARGET_DIST/$TARGET_ARCH"
+ARTIFACT_DIR="$PROJECT_DIR/build/pkgs/deb/$TARGET_DIST/$TARGET_ARCH"
+cmake_args=(
+  -DCMAKE_INSTALL_PREFIX=/usr
+  -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE="$TARGET_ARCH"
+)
 
 echo "Building DEB package for abls-agent-server..."
 echo "Project directory: $PROJECT_DIR"
 echo "Build directory:   $BUILD_DIR"
 echo "Output directory:  $ARTIFACT_DIR"
 echo "Package-only mode: $PACKAGE_ONLY"
-echo "Signing mode:      $([[ "$NO_SIGN" == "true" ]] && echo disabled || echo enabled)"
+echo "Signing mode:      disabled (centralized in ABLS-PKGS)"
 echo "Target suite:      $TARGET_DIST"
 echo "Target arch:       $TARGET_ARCH"
 
@@ -93,9 +113,7 @@ if [[ "$CLEAN" == "true" ]]; then
   rm -f "$ARTIFACT_DIR"/abls-agent-server*.deb
 fi
 
-cmake -S "$PROJECT_DIR" -B "$BUILD_DIR" \
-  -DCMAKE_INSTALL_PREFIX=/usr \
-  -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE="$TARGET_ARCH"
+cmake -S "$PROJECT_DIR" -B "$BUILD_DIR" "${cmake_args[@]}"
 
 if [[ "$PACKAGE_ONLY" == "false" ]]; then
   cmake --build "$BUILD_DIR" -- -j"$(nproc)"
@@ -131,19 +149,6 @@ if [[ -z "$runtime_deb" ]]; then
   exit 1
 fi
 
-if [[ "$NO_SIGN" == "false" ]]; then
-  if command -v dpkg-sig >/dev/null 2>&1; then
-    if [[ -z "${DEB_SIGNER_ID:-}" ]]; then
-      echo "Error: DEB_SIGNER_ID is required for signing"
-      exit 1
-    fi
-    dpkg-sig --sign builder -k "$DEB_SIGNER_ID" "$runtime_deb"
-  else
-    echo "Error: dpkg-sig command not found but signing is enabled"
-    exit 1
-  fi
-fi
-
 copy_with_normalized_name() {
   local src_file="$1"
   local dst_dir="$2"
@@ -163,6 +168,7 @@ copy_with_normalized_name() {
 }
 
 copy_with_normalized_name "$runtime_deb" "$ARTIFACT_DIR"
+
 
 echo "DEB generated:"
 echo "  $runtime_deb"
