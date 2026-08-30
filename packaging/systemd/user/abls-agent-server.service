@@ -1,0 +1,15 @@
+[Unit]
+Description=ABLS Agent Server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/abls-agent-server
+Restart=always
+RestartSec=10s
+StateDirectory=abls-agent-server
+WorkingDirectory=%S/abls-agent-server
+
+[Install]
+WantedBy=default.target
