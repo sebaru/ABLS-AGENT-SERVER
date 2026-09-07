@@ -32,6 +32,7 @@ pkg_check_modules(GLIB REQUIRED glib-2.0)
 pkg_check_modules(JSON_GLIB REQUIRED json-glib-1.0)
 pkg_check_modules(ABLS_LIBS REQUIRED abls-libs)
 pkg_check_modules(ABLS_AGENT_LIBS REQUIRED abls-agent-libs)
+pkg_check_modules(SYSTEMD REQUIRED libsystemd)
 
 add_executable(abls-agent-server
   src/server.c
@@ -65,6 +66,7 @@ target_include_directories(abls-agent-server PRIVATE
   ${JSON_GLIB_INCLUDE_DIRS}
   ${ABLS_LIBS_INCLUDE_DIRS}
   ${ABLS_AGENT_LIBS_INCLUDE_DIRS}
+  ${SYSTEMD_INCLUDE_DIRS}
 )
 
 target_compile_options(abls-agent-server PRIVATE
@@ -80,6 +82,7 @@ target_link_libraries(abls-agent-server PRIVATE
   ${JSON_GLIB_LIBRARIES}
   ${ABLS_LIBS_EXACT}
   ${ABLS_AGENT_LIBS_LIBRARIES}
+  ${SYSTEMD_LIBRARIES}
 )
 
 install(TARGETS abls-agent-server

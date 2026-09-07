@@ -26,6 +26,8 @@
  */
 
  #include "server.h"
+ #include <pwd.h>
+ #include <systemd/sd-login.h>
  struct ABLS_AGENT *Agent = NULL;                                                                     /* Structure de l'agent */
  struct ABLS_SERVER_VARS *Agent_vars = NULL;                                            /* Structure des variables de l'agent */
 
@@ -53,10 +55,31 @@
             "package '%s' not found. Install in progress.", chaine );
        Run_shell ( "sudo -n %s install -y abls-agent-%s", (Agent->is_apt ? "apt" : "dnf"), agent_classe );
      } else g_free(path);
-    gchar *commande = "sudo -n systemctl";
-    if (Agent->systemd_is_user) commande = "systemctl --user";
-    Run_shell ( "%s enable abls-agent-%s@%s", commande, agent_classe, agent_tech_id );
-    Run_shell ( "%s start abls-agent-%s@%s", commande, agent_classe, agent_tech_id );
+
+    if ( g_strcmp0 ( agent_classe, "audio" ) == 0 ) /* With session */
+     { gchar *session;
+       uid_t active_session;
+       if (sd_seat_get_active( "seat0", &session, &active_session) < 0)
+        { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+                "Active session not found. Cannot start %s (class %s)", agent_tech_id, agent_classe );
+          return;
+        }
+       g_free(session);
+       struct passwd *pwd = getpwuid ( active_session );
+       if (!pwd)
+        { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+                "Active session: User '%d' not found. Cannot start %s (class %s)", active_session, agent_tech_id, agent_classe );
+          return;
+        }
+       Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+            "Active session found = '%s' for user '%d'", pwd->pw_name, pwd->pw_uid );
+       Run_shell ( "sudo -n -u %s systemctl --user enable abls-agent-%s@%s", pwd->pw_name, agent_classe, agent_tech_id );
+       Run_shell ( "sudo -n -u %s systemctl --user start abls-agent-%s@%s", pwd->pw_name, agent_classe, agent_tech_id );
+     }
+    else
+     { Run_shell ( "sudo -n systemctl enable abls-agent-%s@%s", agent_classe, agent_tech_id );
+       Run_shell ( "sudo -n systemctl start abls-agent-%s@%s", agent_classe, agent_tech_id );
+     }
     Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "%s (class %s) is starting", agent_tech_id, agent_classe );
   }
 /******************************************************************************************************************************/
