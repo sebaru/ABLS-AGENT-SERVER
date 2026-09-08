@@ -1,11 +1,6 @@
 #!/bin/sh
 set -eu
 
-# Creation du groupe abls
-if ! getent group abls >/dev/null 2>&1; then
-  groupadd abls || true
-fi
-
 # Creation de l'utilisateur abls-agent-server
 if ! getent passwd abls-agent-server >/dev/null 2>&1; then
   useradd --system --gid abls --no-create-home --shell /sbin/nologin abls-agent-server || true
