@@ -11,7 +11,7 @@ Group=abls
 Restart=always
 RestartSec=10s
 StateDirectory=abls-agent-server
-WorkingDirectory=/var/lib/abls-agent-server
+WorkingDirectory=%S/abls-agent-server
 
 [Install]
 WantedBy=multi-user.target
