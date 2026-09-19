@@ -128,7 +128,7 @@
      { Agent_vars->next_top_1min = Agent->Top + 600;
        Dls_data_MONO_set ( NULL, Agent_vars->sys_top_1min, TRUE );
        Dls_data_activer_horloge();
-       Archive_all_thread();
+       Run_thread_detached ( "Running Archive Thread", (GThreadFunc)Archive_all_thread, NULL );
      }
     if (Agent->Top>=Agent_vars->next_top_10min)                                                      /* Toutes les 10 minutes */
      { Agent_vars->next_top_10min = Agent->Top + 6000; }

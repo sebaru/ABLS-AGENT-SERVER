@@ -72,11 +72,11 @@
           return;
         }
        Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
-            "Active session found = '%s' for user '%d'", pwd->pw_name, pwd->pw_uid );
-       Run_shell ( "sudo -n -u %s systemctl --user enable abls-agent-%s@%s", pwd->pw_name, agent_classe, agent_tech_id );
-       Run_shell ( "sudo -n -u %s systemctl --user start abls-agent-%s@%s", pwd->pw_name, agent_classe, agent_tech_id );
+             "Active session found = '%s' for user '%d'", pwd->pw_name, pwd->pw_uid );
+       Run_shell ( "systemctl --machine=%s@.host --user enable abls-agent-%s@%s", pwd->pw_name, agent_classe, agent_tech_id );
+       Run_shell ( "systemctl --machine=%s@.host --user start abls-agent-%s@%s", pwd->pw_name, agent_classe, agent_tech_id );
      }
-    else
+    else                                                                                         /* Agent sans session active */
      { Run_shell ( "sudo -n systemctl enable abls-agent-%s@%s", agent_classe, agent_tech_id );
        Run_shell ( "sudo -n systemctl start abls-agent-%s@%s", agent_classe, agent_tech_id );
      }
@@ -126,21 +126,22 @@
 
     Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/+/START", Agent->domain_uuid );    /* Pour installer les agents sur le server */
 
-    Mqtt_subscribe ( Agent->mqtt_local, "SET_AI/#" );
-    Mqtt_subscribe ( Agent->mqtt_local, "SET_DI/#" );
-    Mqtt_subscribe ( Agent->mqtt_local, "SET_WATCHDOG/#" );
+    gboolean is_master = Agent_config_get_bool ( Agent, "is_master" );
 
-    gboolean is_master = Json_get_bool ( Agent->api_config, "is_master" );
+    if (is_master)
+     { Mqtt_subscribe ( Agent->mqtt_local, "SET_AI/#" );
+       Mqtt_subscribe ( Agent->mqtt_local, "SET_DI/#" );
+       Mqtt_subscribe ( Agent->mqtt_local, "SET_WATCHDOG/#" );
+     }
 
     Agent_is_ready ( Agent );
 
-    /* Demarrage des agents locaux a activer */
+                                                                                     /* Demarrage des agents locaux a activer */
     Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
           "Starting %d local_agents", Json_array_get_length(Agent->api_config, "local_agents") );
     Json_foreach_array_element ( Agent->api_config, "local_agents", Start_agents_by_array, NULL );
 
-    /* Demarrage du DLS si master */
-    if (is_master)
+    if (is_master)                                                                              /* Demarrage du DLS si master */
      { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "This server is the master of the domain" );
        Dls_init();
        Agent_set_status ( Agent, "D.L.S Running" );
@@ -175,9 +176,10 @@
 /****************************************************** Ecoute de l'api *******************************************************/
        JsonNode *mqtt_api_message;
        while ( (mqtt_api_message = Agent_get_mqtt_api_message ( Agent ) ) != NULL )
-        {
+        { if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", Agent->agent_tech_id, "TEST" ) )
+           { Info(__func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Agent Test from API."); }
 /*------------------------------------------------------------ Start ---------------------------------------------------------*/
-          if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "START" ) )
+          else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "START" ) )
            { Json_ref ( mqtt_api_message );
              Run_thread_detached ( "Start one agent", Start_one_agent_by_api_message_thread, mqtt_api_message );
            }
@@ -186,7 +188,7 @@
            { MAP_Remap(); }
           else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "DLS", "+", "RELOAD" ) )
            { gchar *target = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl2" );
-             Dls_Reload_un_plugin ( target );
+             Dls_Reload_un_plugin ( target );                                            /* Use thread_pool donc non bloquant */
            }
           else if ( Mqtt_topic_is ( mqtt_api_message, 3, "+", "DLS", "RELOAD_HORLOGE_TICK" ) )
            { Dls_Load_horloge_ticks(); }

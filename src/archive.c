@@ -30,8 +30,8 @@
 
  #define FACILITY_ARCHIVE "archive"
 
- /******************************************************************************************************************************/
-/* Archive_Send_to_API: Ajoute une archive dans la base de données                                                           */
+/******************************************************************************************************************************/
+/* Archive_Send_to_API: Ajoute une archive dans la base de données                                                            */
 /* Entrées: le type de bit, le numéro du bit, et sa valeur                                                                    */
 /******************************************************************************************************************************/
  void Archive_Send_to_API( gchar *tech_id, gchar *acronyme, gdouble valeur )
@@ -47,23 +47,22 @@
     Agent_send_mqtt_api_message ( Agent, arch, FALSE, "DLS_ARCHIVE/%s/%s", tech_id, acronyme );
     Json_unref( arch );
   }
-
 /******************************************************************************************************************************/
-/* Archive_run: Gere l'archivage des bits internes le necessitant                                                            */
+/* Archive_run: Gere l'archivage des bits internes le necessitant                                                             */
 /* Entrée : le plugin a traiter                                                                                               */
 /* Sortie : rien                                                                                                              */
 /******************************************************************************************************************************/
  static void Archive_run ( struct DLS_PLUGIN *plugin )
   { if (!plugin) return;
     if (!plugin->enable) return;                                                        /* On archive pas les plugins disable */
-    if (Agent->Agent_run != AGENT_IS_RUNNING) return;                                           /* On archive pas si l'agent est en arret */
+    if (Agent->Agent_run != AGENT_IS_RUNNING) return;                               /* On archive pas si l'agent est en arret */
 
     GSList *liste = plugin->Dls_data_AI;
     while ( liste )
      { struct DLS_AI *bit = liste->data;
-       if ( (bit->archivage && (bit->last_arch + bit->archivage <= Agent->Top))       /* Archivage demandé & il est temps ? */
+       if ( (bit->archivage && (bit->last_arch + bit->archivage <= Agent->Top))         /* Archivage demandé & il est temps ? */
           || bit->last_arch == 0)                                                                                 /* a L'init */
-        { Archive_Send_to_API( bit->tech_id, bit->acronyme, (bit->in_range ? bit->valeur : 0.0) );            /* Archivage si besoin */
+        { Archive_Send_to_API( bit->tech_id, bit->acronyme, (bit->in_range ? bit->valeur : 0.0) );     /* Archivage si besoin */
           bit->last_arch = Agent->Top;
         }
        liste = g_slist_next ( liste );
@@ -72,9 +71,9 @@
     liste = plugin->Dls_data_AO;
     while ( liste )
      { struct DLS_AO *bit = liste->data;
-       if ( (bit->archivage && (bit->last_arch + bit->archivage <= Agent->Top))       /* Archivage demandé & il est temps ? */
+       if ( (bit->archivage && (bit->last_arch + bit->archivage <= Agent->Top))         /* Archivage demandé & il est temps ? */
           || bit->last_arch == 0)                                                                                 /* a L'init */
-        { Archive_Send_to_API( bit->tech_id, bit->acronyme, bit->valeur );                                    /* Archivage si besoin */
+        { Archive_Send_to_API( bit->tech_id, bit->acronyme, bit->valeur );                             /* Archivage si besoin */
           bit->last_arch = Agent->Top;
         }
        liste = g_slist_next ( liste );
