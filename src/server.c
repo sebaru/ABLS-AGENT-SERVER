@@ -72,9 +72,9 @@
           return;
         }
        Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
-            "Active session found = '%s' for user '%d'", pwd->pw_name, pwd->pw_uid );
-       Run_shell ( "sudo -n -u %s systemctl --user enable abls-agent-%s@%s", pwd->pw_name, agent_classe, agent_tech_id );
-       Run_shell ( "sudo -n -u %s systemctl --user start abls-agent-%s@%s", pwd->pw_name, agent_classe, agent_tech_id );
+             "Active session found = '%s' for user '%d'", pwd->pw_name, pwd->pw_uid );
+       Run_shell ( "systemctl --machine=%s@.host --user enable abls-agent-%s@%s", pwd->pw_name, agent_classe, agent_tech_id );
+       Run_shell ( "systemctl --machine=%s@.host --user start abls-agent-%s@%s", pwd->pw_name, agent_classe, agent_tech_id );
      }
     else                                                                                         /* Agent sans session active */
      { Run_shell ( "sudo -n systemctl enable abls-agent-%s@%s", agent_classe, agent_tech_id );
@@ -126,11 +126,13 @@
 
     Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/+/START", Agent->domain_uuid );    /* Pour installer les agents sur le server */
 
-    Mqtt_subscribe ( Agent->mqtt_local, "SET_AI/#" );
-    Mqtt_subscribe ( Agent->mqtt_local, "SET_DI/#" );
-    Mqtt_subscribe ( Agent->mqtt_local, "SET_WATCHDOG/#" );
-
     gboolean is_master = Agent_config_get_bool ( Agent, "is_master" );
+
+    if (is_master)
+     { Mqtt_subscribe ( Agent->mqtt_local, "SET_AI/#" );
+       Mqtt_subscribe ( Agent->mqtt_local, "SET_DI/#" );
+       Mqtt_subscribe ( Agent->mqtt_local, "SET_WATCHDOG/#" );
+     }
 
     Agent_is_ready ( Agent );
 
