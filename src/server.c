@@ -95,7 +95,7 @@
      { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR, "Error, thread_data is NULL" );
        return(NULL);
      }
-    Start_one_agent ( Json_get_string ( mqtt_api_message, "agent_classe" ), Json_get_string ( mqtt_api_message, "mqtt_topic_lvl2" ) );
+    Start_one_agent ( Json_get_string ( mqtt_api_message, "agent_classe" ), Json_get_string ( mqtt_api_message, "mqtt_topic_lvl4" ) );
     Json_unref ( mqtt_api_message );
     return(NULL);
   }
@@ -126,7 +126,8 @@
 
     g_mkdir ( "Dls", 0755 );                                                                    /* Creation du repertoire DLS */
 
-    Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/+/START", Agent->domain_uuid );    /* Pour installer les agents sur le server */
+                                                                                  /* Pour installer les agents sur le serveur */
+    Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/%s/START/+", Agent->domain_uuid, Agent->agent_tech_id );
 
     gboolean is_master = Agent_config_get_bool ( Agent, "is_master" );
 
@@ -138,8 +139,8 @@
 
     Agent_is_ready ( Agent );
 
-                                                                                     /* Demarrage des agents locaux a activer */
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+
+    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,           /* Demarrage des agents locaux a activer */
           "Starting %d local_agents", Json_array_get_length(Agent->api_config, "local_agents") );
     Json_foreach_array_element ( Agent->api_config, "local_agents", Start_agents_by_array, NULL );
 
@@ -181,7 +182,7 @@
         { if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", Agent->agent_tech_id, "TEST" ) )
            { Info(__func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Agent Test from API."); }
 /*------------------------------------------------------------ Start ---------------------------------------------------------*/
-          else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", "+", "START" ) )
+          else if ( Mqtt_topic_is ( mqtt_api_message, 5, "+", "AGENT", Agent->agent_tech_id, "START", "+" ) )
            { Json_ref ( mqtt_api_message );
              Run_thread_detached ( "Start one agent", Start_one_agent_by_api_message_thread, mqtt_api_message );
            }
