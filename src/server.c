@@ -72,9 +72,11 @@
           return;
         }
        Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
-             "Active session found = '%s' for user '%d'", pwd->pw_name, pwd->pw_uid );
-       Run_shell ( "systemctl --machine=%s@.host --user enable abls-agent-%s@%s", pwd->pw_name, agent_classe, agent_tech_id );
-       Run_shell ( "systemctl --machine=%s@.host --user start abls-agent-%s@%s", pwd->pw_name, agent_classe, agent_tech_id );
+             "Active session found name = '%s' for user id '%d'", pwd->pw_name, pwd->pw_uid );
+       Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
+                   "sudo -n -E -u %s systemctl --user enable abls-agent-%s@%s", pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id );
+       Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
+                   "sudo -n -E -u %s systemctl --user start abls-agent-%s@%s", pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id );
      }
     else                                                                                         /* Agent sans session active */
      { Run_shell ( "sudo -n systemctl enable abls-agent-%s@%s", agent_classe, agent_tech_id );
