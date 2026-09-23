@@ -45,7 +45,7 @@
      }
 
     gchar *agent_classe  = Json_get_string ( mqtt_api_message, "agent_classe" );
-    gchar *agent_tech_id = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl5" );
+    gchar *agent_tech_id = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl4" );
     if (agent_classe == NULL || agent_tech_id == NULL)
      { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR,
              "Error, agent_classe or agent_tech_id is missing in mqtt_api_message" );
@@ -79,7 +79,7 @@
      }
 
     gchar *agent_classe  = Json_get_string ( mqtt_api_message, "agent_classe" );
-    gchar *agent_tech_id = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl5" );
+    gchar *agent_tech_id = Json_get_string ( mqtt_api_message, "mqtt_topic_4" );
     if (agent_classe == NULL || agent_tech_id == NULL)
      { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR,
              "Error, agent_classe or agent_tech_id is missing in mqtt_api_message" );
@@ -113,7 +113,7 @@
      }
 
     gchar *agent_classe  = Json_get_string ( mqtt_api_message, "agent_classe" );
-    gchar *agent_tech_id = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl5" );
+    gchar *agent_tech_id = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl4" );
     if (agent_classe == NULL || agent_tech_id == NULL)
      { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR,
              "Error, agent_classe or agent_tech_id is missing in mqtt_api_message" );
@@ -198,7 +198,7 @@
      { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR, "Error, mqtt_api_message is NULL" );
        return(NULL);
      }
-    Agent_start ( Json_get_string ( mqtt_api_message, "agent_classe" ), Json_get_string ( mqtt_api_message, "mqtt_topic_lvl5" ) );
+    Agent_start ( Json_get_string ( mqtt_api_message, "agent_classe" ), Json_get_string ( mqtt_api_message, "mqtt_topic_lvl4" ) );
     Json_unref ( mqtt_api_message );
     return(NULL);
   }
