@@ -204,7 +204,8 @@
        return(NULL);
      }
     Agent_start ( Json_get_string ( mqtt_api_message, "agent_classe" ),
-                  Json_get_string ( mqtt_api_message, "mqtt_topic_lvl4" ) );
+                  Json_get_string ( mqtt_api_message, "mqtt_topic_lvl4" ),
+                  Json_get_string ( mqtt_api_message, "description" ) );
     Json_unref ( mqtt_api_message );
     return(NULL);
   }
