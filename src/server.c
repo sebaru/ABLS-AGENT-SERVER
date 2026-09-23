@@ -139,8 +139,9 @@
 /* Entrée: agent, agent_classe, agent_tech_id                                                                                 */
 /* Sortie: aucune                                                                                                             */
 /******************************************************************************************************************************/
- static void Agent_start ( gchar *agent_classe, gchar *agent_tech_id )
-  { if (!agent_classe || !agent_tech_id)
+ static void Agent_start ( gchar *agent_classe, gchar *agent_tech_id, gchar *description )
+  { if (!description) description = "No description";
+    if (!agent_classe || !agent_tech_id)
      { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR, "Error, agent_classe or agent_tech_id is missing" );
        return;
      }
@@ -148,14 +149,14 @@
     if (g_strcmp0 ( agent_classe,  Agent->agent_classe  ) == 0) return; /* On ne peut pas demarrer l'agent server sur lui-meme */
     if (g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0) return; /* On ne peut pas demarrer l'agent server sur lui-meme */
 
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Starting %s (class %s)", agent_tech_id, agent_classe );
+    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Starting %s (class %s): %s",
+          agent_tech_id, agent_classe, description );
 
     gchar chaine[256];
     g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", agent_classe );
     gchar *path = g_find_program_in_path(chaine);
     if (!path)
-     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
-            "package '%s' not found. Install in progress.", chaine );
+     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "package '%s' not found. Install in progress.", chaine );
        Run_shell ( "sudo -n %s install -y abls-agent-%s", (Agent->is_apt ? "apt" : "dnf"), agent_classe );
      } else g_free(path);
 
@@ -164,32 +165,36 @@
        uid_t active_session;
        if (sd_seat_get_active( "seat0", &session, &active_session) < 0)
         { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
-                "Active session not found. Cannot start %s (class %s)", agent_tech_id, agent_classe );
+                "Active session not found. Cannot start %s (class %s): %s", agent_tech_id, agent_classe, description );
           return;
         }
        g_free(session);
        struct passwd *pwd = getpwuid ( active_session );
        if (!pwd)
         { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
-                "Active session: User '%d' not found. Cannot start %s (class %s)", active_session, agent_tech_id, agent_classe );
+                "Active session: User '%d' not found. Cannot start %s (class %s): %s",
+                 active_session, agent_tech_id, agent_classe, description );
           return;
         }
        Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
              "Active session found name = '%s' for user id '%d'", pwd->pw_name, pwd->pw_uid );
        Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
-                   "sudo -n -E -u %s systemctl --user enable abls-agent-%s@%s", pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id );
+                   "sudo -n -E -u %s systemctl --user enable abls-agent-%s@%s",
+                    pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id );
        Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
-                   "sudo -n -E -u %s systemctl --user start abls-agent-%s@%s", pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id );
+                   "sudo -n -E -u %s systemctl --user start abls-agent-%s@%s",
+                    pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id );
      }
     else                                                                                         /* Agent sans session active */
      { Run_shell ( "sudo -n systemctl enable abls-agent-%s@%s", agent_classe, agent_tech_id );
        Run_shell ( "sudo -n systemctl start abls-agent-%s@%s", agent_classe, agent_tech_id );
      }
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "%s (class %s) is starting", agent_tech_id, agent_classe );
+    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "%s (class %s) '%s' is starting",
+          agent_tech_id, agent_classe, description );
   }
 /******************************************************************************************************************************/
 /* Start_one_agent_by_api_message_thread: Lance un agent depuis une demande de l'API                                          */
-/* Entrée: le message api                                                                                                     */
+/* Entrée: le message api et la description de l'agent                                                                        */
 /* Sortie: aucune                                                                                                             */
 /******************************************************************************************************************************/
  static gpointer Agent_start_thread ( gpointer user_data )
@@ -198,7 +203,8 @@
      { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR, "Error, mqtt_api_message is NULL" );
        return(NULL);
      }
-    Agent_start ( Json_get_string ( mqtt_api_message, "agent_classe" ), Json_get_string ( mqtt_api_message, "mqtt_topic_lvl4" ) );
+    Agent_start ( Json_get_string ( mqtt_api_message, "agent_classe" ),
+                  Json_get_string ( mqtt_api_message, "mqtt_topic_lvl4" ) );
     Json_unref ( mqtt_api_message );
     return(NULL);
   }
@@ -211,8 +217,8 @@
   { if (!array || !element || !user_data) return;
     gchar *agent_classe  = Json_get_string ( element, "agent_classe" );
     gchar *agent_tech_id = Json_get_string ( element, "agent_tech_id" );
-    if (agent_classe && agent_tech_id)
-     { Agent_start ( agent_classe, agent_tech_id ); }
+    gchar *description   = Json_get_string ( element, "description" );
+    Agent_start ( agent_classe, agent_tech_id, description );
   }
 /******************************************************************************************************************************/
 /* main: Prend en charge l'agent                                                                                              */
