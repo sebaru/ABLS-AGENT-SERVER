@@ -25,11 +25,10 @@
  * Boston, MA  02110-1301  USA
  */
 
- #include "server.h"
+ #include <abls-agent-libs/abls-agent-libs.h>
  #include <pwd.h>
  #include <systemd/sd-login.h>
  struct ABLS_AGENT *Agent = NULL;                                                                     /* Structure de l'agent */
- struct ABLS_SERVER_VARS *Agent_vars = NULL;                                            /* Structure des variables de l'agent */
 
  /******************************************************************************************************************************/
 /* Agent_is_ready: appelé au demarrage lorsque l'agent est pret                                                               */
@@ -230,24 +229,13 @@
     setenv ( "ABLS_AGENT_TECH_ID", hostname, 1 );
     g_free ( hostname );
     setenv ( "ABLS_TPS", "100", 1 );
-    Agent = Agent_init ( argv[0], "server", ABLS_AGENT_SERVER_VERSION, sizeof(struct ABLS_SERVER_VARS), argc, argv );
-    Agent_vars = Agent->vars;
-
-    g_mkdir ( "Dls", 0755 );                                                                    /* Creation du repertoire DLS */
+    Agent = Agent_init ( argv[0], "server", ABLS_AGENT_SERVER_VERSION, 0, argc, argv );
 
                                                                                   /* Pour installer les agents sur le serveur */
     Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/%s/START/+",   Agent->domain_uuid, Agent->agent_tech_id );
     Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/%s/UPGRADE/+", Agent->domain_uuid, Agent->agent_tech_id );
     Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/%s/RESTART/+", Agent->domain_uuid, Agent->agent_tech_id );
     Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/%s/STOP/+",    Agent->domain_uuid, Agent->agent_tech_id );
-
-    gboolean is_master = Agent_config_get_bool ( Agent, "is_master" );
-
-    if (is_master)
-     { Mqtt_subscribe ( Agent->mqtt_local, "SET_AI/#" );
-       Mqtt_subscribe ( Agent->mqtt_local, "SET_DI/#" );
-       Mqtt_subscribe ( Agent->mqtt_local, "SET_WATCHDOG/#" );
-     }
 
     Agent_is_ready ( Agent );
 
@@ -256,38 +244,10 @@
           "Starting %d local_agents", Json_array_get_length(Agent->api_config, "local_agents") );
     Json_foreach_array_element ( Agent->api_config, "local_agents", Agent_Start_by_array, NULL );
 
-    if (is_master)                                                                              /* Demarrage du DLS si master */
-     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "This server is the master of the domain" );
-       Dls_init();
-       Agent_set_status ( Agent, "D.L.S Running" );
-     }
-    else
-     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "This server is a slave of the domain" );
-       Agent_set_status ( Agent, "Waiting for command" );
-     }
+    Agent_set_status ( Agent, "Waiting for command" );
 
     while(Agent->Agent_run == AGENT_IS_RUNNING)                                              /* On tourne tant que necessaire */
      { Agent_loop ( Agent );                                             /* Loop sur l'agent pour mettre a jour la telemetrie */
-/****************************************************** Ecoute du master ******************************************************/
-       JsonNode *mqtt_local_message;
-       while ( (mqtt_local_message = Mqtt_get_message ( Agent->mqtt_local ) ) != NULL )
-        { if (Mqtt_topic_is ( mqtt_local_message, 2, "SET_AI", "+" ))
-           { Json_add_string ( mqtt_local_message, "agent_tech_id", Json_get_string ( mqtt_local_message, "mqtt_topic_lvl1" ) );
-             Json_add_string ( mqtt_local_message, "agent_acronyme", Json_get_string ( mqtt_local_message, "mqtt_topic_lvl2" ) );
-             Dls_data_AI_set_from_thread_ai ( mqtt_local_message );
-           }
-          else if (Mqtt_topic_is ( mqtt_local_message, 2, "SET_DI", "+" ))
-           { Json_add_string ( mqtt_local_message, "agent_tech_id", Json_get_string ( mqtt_local_message, "mqtt_topic_lvl1" ) );
-             Json_add_string ( mqtt_local_message, "agent_acronyme", Json_get_string ( mqtt_local_message, "mqtt_topic_lvl2" ) );
-             Dls_data_DI_set_from_thread_di ( mqtt_local_message );
-           }
-          else if (Mqtt_topic_is ( mqtt_local_message, 2, "SET_WATCHDOG", Agent->agent_tech_id ))
-           { Json_add_string ( mqtt_local_message, "agent_tech_id", Json_get_string ( mqtt_local_message, "mqtt_topic_lvl1" ) );
-             Json_add_string ( mqtt_local_message, "agent_acronyme", Json_get_string ( mqtt_local_message, "mqtt_topic_lvl2" ) );
-             Dls_data_WATCHDOG_set_from_thread_watchdog ( mqtt_local_message );
-           }
-          Json_unref ( mqtt_local_message );
-        }
 /****************************************************** Ecoute de l'api *******************************************************/
        JsonNode *mqtt_api_message;
        while ( (mqtt_api_message = Agent_get_mqtt_api_message ( Agent ) ) != NULL )
@@ -310,24 +270,11 @@
            { Json_ref ( mqtt_api_message );
              Run_thread_detached ( "Upgrading agent", Agent_upgrade_thread, mqtt_api_message );
            }
-/*------------------------------------------------------------ Upgrade -------------------------------------------------------*/
-          else if ( Mqtt_topic_is ( mqtt_api_message, 3, "+", "DLS", "REMAP" ) )
-           { MAP_Remap(); }
-          else if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "DLS", "+", "RELOAD" ) )
-           { gchar *target = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl2" );
-             Dls_Reload_un_plugin ( target );                                            /* Use thread_pool donc non bloquant */
-           }
-          else if ( Mqtt_topic_is ( mqtt_api_message, 3, "+", "DLS", "RELOAD_HORLOGE_TICK" ) )
-           { Dls_Load_horloge_ticks(); }
           else Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "API sent unknown command %s", Json_get_string ( mqtt_api_message, "mqtt_topic" ) );
           Json_unref (mqtt_api_message);
         }
-
-/********************************************************** Running DLS *******************************************************/
-        if (is_master) Dls_loop();
      }
 
-    if (is_master) Dls_end();
     Agent_end(Agent);
   }
 /*----------------------------------------------------------------------------------------------------------------------------*/

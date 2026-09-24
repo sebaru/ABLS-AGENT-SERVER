@@ -1,17 +1,12 @@
 # abls-agent-server
 
-Template runtime for a future Abls-Habitat server agent.
+Local agent lifecycle manager for an Abls-Habitat server.
 
 ## Current implementation status
 
-- Runtime skeleton based on ABLS-AGENT-LIBS
 - Facility fixed to `server`
-- Prefix initialized from `agent_tech_id`
-- Main lifecycle implemented with:
-  - `Agent_init(...)`
-  - `Agent_loop(...)`
-  - `Agent_end(...)`
-- `src/server.c` is intentionally minimal and ready to extend
+- Starts configured `local_agents`
+- Handles API commands to start, stop, restart, and upgrade local agents
 
 ## Build
 
