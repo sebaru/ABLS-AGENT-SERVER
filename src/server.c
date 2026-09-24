@@ -53,7 +53,7 @@
        return(NULL);
      }
 
-    if ( g_strcmp0 ( Agent->agent_classe, "server" ) == 0 )
+    if ( g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0 )                               /* Arret du server lui même ? */
      { Run_shell ( "sudo -n systemctl disable abls-agent-server" );
        Run_shell_detached ( "sudo -n systemctl stop abls-agent-server" );
      }
@@ -66,7 +66,7 @@
     return(NULL);
   }
 /******************************************************************************************************************************/
-/* Agent_restart_thread: redémarre l'agent                                                                                   */
+/* Agent_restart_thread: redémarre l'agent                                                                                    */
 /* Entrée: La structure afférente                                                                                             */
 /* Sortie: néant                                                                                                              */
 /******************************************************************************************************************************/
@@ -79,7 +79,7 @@
      }
 
     gchar *agent_classe  = Json_get_string ( mqtt_api_message, "agent_classe" );
-    gchar *agent_tech_id = Json_get_string ( mqtt_api_message, "mqtt_topic_4" );
+    gchar *agent_tech_id = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl4" );
     if (agent_classe == NULL || agent_tech_id == NULL)
      { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR,
              "Error, agent_classe or agent_tech_id is missing in mqtt_api_message" );
@@ -87,7 +87,7 @@
        return(NULL);
      }
 
-    if ( g_strcmp0 ( Agent->agent_classe, "server" ) == 0 )
+    if ( g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0 )                               /* Arret du server lui même ? */
      { Run_shell ( "sudo -n systemctl enable abls-agent-server" );
        Run_shell_detached ( "sudo -n systemctl restart abls-agent-server" );
      }
@@ -127,7 +127,7 @@
      }
     else
      { Run_shell ( "sudo -n dnf upgrade -y abls-agent-%s", Agent->agent_classe ); }
-    if ( g_strcmp0 ( Agent->agent_classe, "server" ) == 0 )
+    if ( g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0 )                               /* Arret du server lui même ? */
        { Run_shell_detached ( "sudo -n systemctl restart abls-agent-server" ); }
     else Run_shell ( "sudo -n systemctl restart abls-agent-%s@%s", agent_classe, agent_tech_id );
     Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Agent '%s' upgraded", agent_tech_id );
@@ -146,7 +146,6 @@
        return;
      }
 
-    if (g_strcmp0 ( agent_classe,  Agent->agent_classe  ) == 0) return; /* On ne peut pas demarrer l'agent server sur lui-meme */
     if (g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0) return; /* On ne peut pas demarrer l'agent server sur lui-meme */
 
     Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Starting %s (class %s): %s",
