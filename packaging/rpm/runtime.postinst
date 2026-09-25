@@ -13,9 +13,6 @@ chmod 750 /var/lib/abls-agent-server
 
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
   systemctl daemon-reload >/dev/null 2>&1 || true
-  if systemctl is-active --quiet abls-agent-server.service 2>/dev/null; then
-    systemctl try-restart abls-agent-server.service >/dev/null 2>&1 || true
-  fi
 fi
 
 exit 0
