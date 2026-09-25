@@ -60,7 +60,8 @@
      { Run_shell ( "sudo -n systemctl disable abls-agent-%s@%s", agent_classe, agent_tech_id );
        Run_shell ( "sudo -n systemctl stop    abls-agent-%s@%s", agent_classe, agent_tech_id );
      }
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Agent '%s' Stopped", agent_tech_id );
+    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+          "Agent '%s' (class '%s') stopped", agent_tech_id, agent_classe );
     Json_unref ( mqtt_api_message );
     return(NULL);
   }
@@ -94,7 +95,8 @@
      { Run_shell ( "sudo -n systemctl enable abls-agent-%s@%s", agent_classe, agent_tech_id );
        Run_shell ( "sudo -n systemctl restart abls-agent-%s@%s", agent_classe, agent_tech_id );
      }
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Agent '%s' restarted", agent_tech_id );
+    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+          "Agent '%s' (class '%s') restarted", agent_tech_id, agent_classe );
     Json_unref ( mqtt_api_message );
     return(NULL);
   }
@@ -122,14 +124,17 @@
 
     if (Agent->is_apt)
      { Run_shell ( "sudo -n apt update" );
-       Run_shell ( "sudo -n apt upgrade -y abls-agent-%s", Agent->agent_classe );
+       if ( g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0 )                            /* Arret du server lui même ? */
+            { Run_shell_detached ( "sudo -n apt upgrade -y abls-agent-server" ); }
+       else { Run_shell ( "sudo -n apt upgrade -y abls-agent-%s", agent_classe ); }
      }
     else
-     { Run_shell ( "sudo -n dnf upgrade -y abls-agent-%s", Agent->agent_classe ); }
-    if ( g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0 )                               /* Arret du server lui même ? */
-       { Run_shell_detached ( "sudo -n systemctl restart abls-agent-server" ); }
-    else Run_shell ( "sudo -n systemctl restart abls-agent-%s@%s", agent_classe, agent_tech_id );
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Agent '%s' upgraded", agent_tech_id );
+     { if ( g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0 )                            /* Arret du server lui même ? */
+            { Run_shell_detached ( "sudo -n systemctl restart abls-agent-server" ); }
+       else { Run_shell ( "sudo -n systemctl restart abls-agent-%s@%s", agent_classe, agent_tech_id ); }
+     }
+    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+          "Agent '%s' (class '%s') upgraded", agent_tech_id, agent_classe );
     Json_unref ( mqtt_api_message );
     return(NULL);
   }
@@ -187,7 +192,7 @@
      { Run_shell ( "sudo -n systemctl enable abls-agent-%s@%s", agent_classe, agent_tech_id );
        Run_shell ( "sudo -n systemctl start abls-agent-%s@%s", agent_classe, agent_tech_id );
      }
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "%s (class %s) '%s' is starting",
+    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Agent '%s' (class '%s') '%s' is starting",
           agent_tech_id, agent_classe, description );
   }
 /******************************************************************************************************************************/
