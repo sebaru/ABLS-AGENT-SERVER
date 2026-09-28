@@ -67,6 +67,7 @@
     gchar *description = Json_get_string ( mqtt_api_message, "description" );
     if (!description) description = "";
 
+    gpointer agent_status = Agent_status_push ( Agent, "Stopping %s@%s", agent_classe, agent_tech_id );
     if ( g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0 )                               /* Arret du server lui même ? */
      { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_CRIT,
              "Server is shuting down. It can only be restarted manually." );
@@ -96,6 +97,7 @@
     Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
           "Agent '%s' (class '%s') stopped", agent_tech_id, agent_classe );
     Json_unref ( mqtt_api_message );
+    Agent_status_pop ( Agent, agent_status );
     return(NULL);
   }
 /******************************************************************************************************************************/
@@ -122,6 +124,7 @@
     gchar *description = Json_get_string ( mqtt_api_message, "description" );
     if (!description) description = "";
 
+    gpointer agent_status = Agent_status_push ( Agent, "Restarting %s@%s", agent_classe, agent_tech_id );
     if ( g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0 )                               /* Arret du server lui même ? */
      { Run_shell ( "sudo -n systemctl enable abls-agent-server" );
        Run_shell_detached ( "sudo -n systemctl restart abls-agent-server" );
@@ -149,6 +152,7 @@
     Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
           "Agent '%s' (class '%s') restarted", agent_tech_id, agent_classe );
     Json_unref ( mqtt_api_message );
+    Agent_status_pop ( Agent, agent_status );
     return(NULL);
   }
 /******************************************************************************************************************************/
@@ -175,20 +179,25 @@
     gchar *description = Json_get_string ( mqtt_api_message, "description" );
     if (!description) description = "";
 
+    gpointer agent_status = Agent_status_push ( Agent, "Upgrading %s@%s", agent_classe, agent_tech_id );
     if (Agent->is_apt)
      { Run_shell ( "sudo -n apt update" );
        if ( g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0 )                            /* Arret du server lui même ? */
-            { Run_shell_detached ( "sudo -n apt upgrade -y abls-agent-server" ); }
+            { Run_shell ( "sudo -n apt upgrade -y abls-agent-server" ); }
        else { Run_shell ( "sudo -n apt upgrade -y abls-agent-%s", agent_classe ); }
      }
     else
      { if ( g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0 )                            /* Arret du server lui même ? */
-            { Run_shell_detached ( "sudo -n dnf upgrade abls-agent-server" ); }
+            { Run_shell ( "sudo -n dnf upgrade abls-agent-server" ); }
        else { Run_shell ( "sudo -n dnf upgrade abls-agent-%s", agent_classe ); }
      }
     Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
-          "Agent '%s' (class '%s') upgraded", agent_tech_id, agent_classe );
+          "Agent '%s' (class '%s') upgraded, Restarting.", agent_tech_id, agent_classe );
+    Agent_restart_thread ( user_data );
+    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+          "Agent '%s' (class '%s') upgraded and restarted", agent_tech_id, agent_classe );
     Json_unref ( mqtt_api_message );
+    Agent_status_pop ( Agent, agent_status );
     return(NULL);
   }
 /******************************************************************************************************************************/
@@ -210,6 +219,9 @@
 
     gchar chaine[256];
     g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", agent_classe );
+
+    gpointer agent_status = Agent_status_push ( Agent, "Starting %s@%s", agent_classe, agent_tech_id );
+
     gchar *path = g_find_program_in_path(chaine);
     if (!path)
      { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "package '%s' not found. Install in progress.", chaine );
@@ -238,6 +250,7 @@
      }
     Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Agent '%s' (class '%s') '%s' is starting",
           agent_tech_id, agent_classe, description );
+    Agent_status_pop ( Agent, agent_status );
   }
 /******************************************************************************************************************************/
 /* Start_one_agent_by_api_message_thread: Lance un agent depuis une demande de l'API                                          */
@@ -292,8 +305,6 @@
     Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,           /* Demarrage des agents locaux a activer */
           "Starting %d local_agents", Json_array_get_length(Agent->api_config, "local_agents") );
     Json_foreach_array_element ( Agent->api_config, "local_agents", Agent_Start_by_array, NULL );
-
-    Agent_set_status ( Agent, "Waiting for command" );
 
     while(Agent->Agent_run == AGENT_IS_RUNNING)                                              /* On tourne tant que necessaire */
      { Agent_loop ( Agent );                                             /* Loop sur l'agent pour mettre a jour la telemetrie */
