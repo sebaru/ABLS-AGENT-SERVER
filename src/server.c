@@ -31,6 +31,19 @@
  struct ABLS_AGENT *Agent = NULL;                                                                     /* Structure de l'agent */
 
 /******************************************************************************************************************************/
+/* Agent_get_active_session: appelé lorsque l'agent doit être arrêté                                                          */
+/* Entrée: néant                                                                                                              */
+/* Sortie: la structure passwd du user connecté, le cas échéant                                                               */
+/******************************************************************************************************************************/
+ static struct passwd *Agent_get_active_session ( void )
+  { gchar *session;
+    uid_t active_session;
+    if (sd_seat_get_active( "seat0", &session, &active_session) < 0) return(NULL);
+    g_free(session);
+    struct passwd *pwd = getpwuid ( active_session );
+    return(pwd);
+  }
+/******************************************************************************************************************************/
 /* Agent_stop_thread: appelé lorsque l'agent doit être arrêté                                                                 */
 /* Entrée: La structure afférente                                                                                             */
 /* Sortie: néant                                                                                                              */
@@ -51,12 +64,32 @@
        Json_unref ( mqtt_api_message );
        return(NULL);
      }
+    gchar *description = Json_get_string ( mqtt_api_message, "description" );
+    if (!description) description = "";
 
     if ( g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0 )                               /* Arret du server lui même ? */
-     { Run_shell ( "sudo -n systemctl disable abls-agent-server" );
+     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_CRIT,
+             "Server is shuting down. It can only be restarted manually." );
+       Run_shell ( "sudo -n systemctl disable abls-agent-server" );
        Run_shell_detached ( "sudo -n systemctl stop abls-agent-server" );
      }
-    else
+    else if ( g_strcmp0 ( agent_classe, "audio" ) == 0 )                            /* Pour les agents en mode systemd --user */
+     { struct passwd *pwd = Agent_get_active_session ();
+       if (!pwd)
+        { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+                "Active session: No active session found. Cannot stop %s (class %s): %s", agent_tech_id, agent_classe, description );
+          return(NULL);
+        }
+       Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+             "Active session found name = '%s' for user id '%d'", pwd->pw_name, pwd->pw_uid );
+       Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
+                   "sudo -n -E -u %s systemctl --user disable abls-agent-%s@%s",
+                    pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id );
+       Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
+                   "sudo -n -E -u %s systemctl --user stop abls-agent-%s@%s",
+                    pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id );
+     }
+    else                                                              /* Pour tous les autres agents en mode systemctl direct */
      { Run_shell ( "sudo -n systemctl disable abls-agent-%s@%s", agent_classe, agent_tech_id );
        Run_shell ( "sudo -n systemctl stop    abls-agent-%s@%s", agent_classe, agent_tech_id );
      }
@@ -86,12 +119,30 @@
        Json_unref ( mqtt_api_message );
        return(NULL);
      }
+    gchar *description = Json_get_string ( mqtt_api_message, "description" );
+    if (!description) description = "";
 
     if ( g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0 )                               /* Arret du server lui même ? */
      { Run_shell ( "sudo -n systemctl enable abls-agent-server" );
        Run_shell_detached ( "sudo -n systemctl restart abls-agent-server" );
      }
-    else
+    else if ( g_strcmp0 ( agent_classe, "audio" ) == 0 )                            /* Pour les agents en mode systemd --user */
+     { struct passwd *pwd = Agent_get_active_session ();
+       if (!pwd)
+        { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+                "Active session: No active session found. Cannot restart %s (class %s): %s", agent_tech_id, agent_classe, description );
+          return(NULL);
+        }
+       Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+             "Active session found name = '%s' for user id '%d'", pwd->pw_name, pwd->pw_uid );
+       Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
+                   "sudo -n -E -u %s systemctl --user enable abls-agent-%s@%s",
+                    pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id );
+       Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
+                   "sudo -n -E -u %s systemctl --user restart abls-agent-%s@%s",
+                    pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id );
+     }
+    else                                                              /* Pour tous les autres agents en mode systemctl direct */
      { Run_shell ( "sudo -n systemctl enable abls-agent-%s@%s", agent_classe, agent_tech_id );
        Run_shell ( "sudo -n systemctl restart abls-agent-%s@%s", agent_classe, agent_tech_id );
      }
@@ -121,6 +172,8 @@
        Json_unref ( mqtt_api_message );
        return(NULL);
      }
+    gchar *description = Json_get_string ( mqtt_api_message, "description" );
+    if (!description) description = "";
 
     if (Agent->is_apt)
      { Run_shell ( "sudo -n apt update" );
@@ -130,8 +183,8 @@
      }
     else
      { if ( g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0 )                            /* Arret du server lui même ? */
-            { Run_shell_detached ( "sudo -n systemctl restart abls-agent-server" ); }
-       else { Run_shell ( "sudo -n systemctl restart abls-agent-%s@%s", agent_classe, agent_tech_id ); }
+            { Run_shell_detached ( "sudo -n dnf upgrade abls-agent-server" ); }
+       else { Run_shell ( "sudo -n dnf upgrade abls-agent-%s", agent_classe ); }
      }
     Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
           "Agent '%s' (class '%s') upgraded", agent_tech_id, agent_classe );
@@ -144,13 +197,13 @@
 /* Sortie: aucune                                                                                                             */
 /******************************************************************************************************************************/
  static void Agent_start ( gchar *agent_classe, gchar *agent_tech_id, gchar *description )
-  { if (!description) description = "No description";
-    if (!agent_classe || !agent_tech_id)
+  { if (!agent_classe || !agent_tech_id)
      { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR, "Error, agent_classe or agent_tech_id is missing" );
        return;
      }
+    if (!description) description = "";
 
-    if (g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0) return; /* On ne peut pas demarrer l'agent server sur lui-meme */
+    if (g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0) return;/* On ne peut pas demarrer l'agent server sur lui-meme */
 
     Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Starting %s (class %s): %s",
           agent_tech_id, agent_classe, description );
@@ -163,20 +216,11 @@
        Run_shell ( "sudo -n %s install -y abls-agent-%s", (Agent->is_apt ? "apt" : "dnf"), agent_classe );
      } else g_free(path);
 
-    if ( g_strcmp0 ( agent_classe, "audio" ) == 0 ) /* With session */
-     { gchar *session;
-       uid_t active_session;
-       if (sd_seat_get_active( "seat0", &session, &active_session) < 0)
-        { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
-                "Active session not found. Cannot start %s (class %s): %s", agent_tech_id, agent_classe, description );
-          return;
-        }
-       g_free(session);
-       struct passwd *pwd = getpwuid ( active_session );
+    if ( g_strcmp0 ( agent_classe, "audio" ) == 0 )                                 /* Pour les agents en mode systemd --user */
+     { struct passwd *pwd = Agent_get_active_session ();
        if (!pwd)
         { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
-                "Active session: User '%d' not found. Cannot start %s (class %s): %s",
-                 active_session, agent_tech_id, agent_classe, description );
+                "Active session: No active session found. Cannot start %s (class %s): %s", agent_tech_id, agent_classe, description );
           return;
         }
        Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
