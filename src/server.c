@@ -50,16 +50,16 @@
 /******************************************************************************************************************************/
  static gpointer Agent_stop_thread ( gpointer user_data )
   { JsonNode *mqtt_api_message = user_data;
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Stopping one agent." );
+    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE, "Stopping one agent." );
     if (!mqtt_api_message)
-     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR, "Error, mqtt_api_message is NULL" );
+     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR, "Error, mqtt_api_message is NULL" );
        return(NULL);
      }
 
     gchar *agent_classe  = Json_get_string ( mqtt_api_message, "agent_classe" );
     gchar *agent_tech_id = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl4" );
     if (agent_classe == NULL || agent_tech_id == NULL)
-     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR,
+     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR,
              "Error, agent_classe or agent_tech_id is missing in mqtt_api_message" );
        Json_unref ( mqtt_api_message );
        return(NULL);
@@ -68,8 +68,8 @@
     if (!description) description = "";
 
     gpointer agent_status = Agent_status_push ( Agent, "Stopping %s@%s", agent_classe, agent_tech_id );
-    if ( g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0 )                               /* Arret du server lui même ? */
-     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_CRIT,
+    if ( g_strcmp0 ( agent_tech_id, Agent_get_tech_id ( Agent ) ) == 0 )                               /* Arret du server lui même ? */
+     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_CRIT,
              "Server is shuting down. It can only be restarted manually." );
        Run_shell ( "sudo -n systemctl disable abls-agent-server" );
        Run_shell_detached ( "sudo -n systemctl stop abls-agent-server" );
@@ -77,11 +77,11 @@
     else if ( g_strcmp0 ( agent_classe, "audio" ) == 0 )                            /* Pour les agents en mode systemd --user */
      { struct passwd *pwd = Agent_get_active_session ();
        if (!pwd)
-        { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+        { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
                 "Active session: No active session found. Cannot stop %s (class %s): %s", agent_tech_id, agent_classe, description );
           return(NULL);
         }
-       Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+       Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
              "Active session found name = '%s' for user id '%d'", pwd->pw_name, pwd->pw_uid );
        Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
                    "sudo -n -E -u %s systemctl --user disable abls-agent-%s@%s",
@@ -94,7 +94,7 @@
      { Run_shell ( "sudo -n systemctl disable abls-agent-%s@%s", agent_classe, agent_tech_id );
        Run_shell ( "sudo -n systemctl stop    abls-agent-%s@%s", agent_classe, agent_tech_id );
      }
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
           "Agent '%s' (class '%s') stopped", agent_tech_id, agent_classe );
     Json_unref ( mqtt_api_message );
     Agent_status_pop ( Agent, agent_status );
@@ -107,16 +107,16 @@
 /******************************************************************************************************************************/
  static gpointer Agent_restart_thread ( gpointer user_data )
   { JsonNode *mqtt_api_message = user_data;
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Restarting one agent." );
+    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE, "Restarting one agent." );
     if (!mqtt_api_message)
-     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR, "Error, mqtt_api_message is NULL" );
+     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR, "Error, mqtt_api_message is NULL" );
        return(NULL);
      }
 
     gchar *agent_classe  = Json_get_string ( mqtt_api_message, "agent_classe" );
     gchar *agent_tech_id = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl4" );
     if (agent_classe == NULL || agent_tech_id == NULL)
-     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR,
+     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR,
              "Error, agent_classe or agent_tech_id is missing in mqtt_api_message" );
        Json_unref ( mqtt_api_message );
        return(NULL);
@@ -125,18 +125,18 @@
     if (!description) description = "";
 
     gpointer agent_status = Agent_status_push ( Agent, "Restarting %s@%s", agent_classe, agent_tech_id );
-    if ( g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0 )                               /* Arret du server lui même ? */
+    if ( g_strcmp0 ( agent_tech_id, Agent_get_tech_id ( Agent ) ) == 0 )                               /* Arret du server lui même ? */
      { Run_shell ( "sudo -n systemctl enable abls-agent-server" );
        Run_shell_detached ( "sudo -n systemctl restart abls-agent-server" );
      }
     else if ( g_strcmp0 ( agent_classe, "audio" ) == 0 )                            /* Pour les agents en mode systemd --user */
      { struct passwd *pwd = Agent_get_active_session ();
        if (!pwd)
-        { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+        { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
                 "Active session: No active session found. Cannot restart %s (class %s): %s", agent_tech_id, agent_classe, description );
           return(NULL);
         }
-       Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+       Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
              "Active session found name = '%s' for user id '%d'", pwd->pw_name, pwd->pw_uid );
        Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
                    "sudo -n -E -u %s systemctl --user enable abls-agent-%s@%s",
@@ -149,7 +149,7 @@
      { Run_shell ( "sudo -n systemctl enable abls-agent-%s@%s", agent_classe, agent_tech_id );
        Run_shell ( "sudo -n systemctl restart abls-agent-%s@%s", agent_classe, agent_tech_id );
      }
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
           "Agent '%s' (class '%s') restarted", agent_tech_id, agent_classe );
     Json_unref ( mqtt_api_message );
     Agent_status_pop ( Agent, agent_status );
@@ -162,16 +162,16 @@
 /******************************************************************************************************************************/
  static gpointer Agent_upgrade_thread ( gpointer user_data )
   { JsonNode *mqtt_api_message = user_data;
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Upgrade one agent." );
+    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE, "Upgrade one agent." );
     if (!mqtt_api_message)
-     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR, "Error, mqtt_api_message is NULL" );
+     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR, "Error, mqtt_api_message is NULL" );
        return(NULL);
      }
 
     gchar *agent_classe  = Json_get_string ( mqtt_api_message, "agent_classe" );
     gchar *agent_tech_id = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl4" );
     if (agent_classe == NULL || agent_tech_id == NULL)
-     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR,
+     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR,
              "Error, agent_classe or agent_tech_id is missing in mqtt_api_message" );
        Json_unref ( mqtt_api_message );
        return(NULL);
@@ -180,21 +180,21 @@
     if (!description) description = "";
 
     gpointer agent_status = Agent_status_push ( Agent, "Upgrading %s@%s", agent_classe, agent_tech_id );
-    if (Agent->is_apt)
+    if (Agent_is_apt ( Agent ))
      { Run_shell ( "sudo -n apt update" );
-       if ( g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0 )                            /* Arret du server lui même ? */
+       if ( g_strcmp0 ( agent_tech_id, Agent_get_tech_id ( Agent ) ) == 0 )                            /* Arret du server lui même ? */
             { Run_shell ( "sudo -n apt upgrade -y abls-agent-server" ); }
        else { Run_shell ( "sudo -n apt upgrade -y abls-agent-%s", agent_classe ); }
      }
     else
-     { if ( g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0 )                            /* Arret du server lui même ? */
+     { if ( g_strcmp0 ( agent_tech_id, Agent_get_tech_id ( Agent ) ) == 0 )                            /* Arret du server lui même ? */
             { Run_shell ( "sudo -n dnf upgrade abls-agent-server" ); }
        else { Run_shell ( "sudo -n dnf upgrade abls-agent-%s", agent_classe ); }
      }
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
           "Agent '%s' (class '%s') upgraded, Restarting.", agent_tech_id, agent_classe );
     Agent_restart_thread ( user_data );
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
           "Agent '%s' (class '%s') upgraded and restarted", agent_tech_id, agent_classe );
     Json_unref ( mqtt_api_message );
     Agent_status_pop ( Agent, agent_status );
@@ -207,14 +207,14 @@
 /******************************************************************************************************************************/
  static void Agent_start ( gchar *agent_classe, gchar *agent_tech_id, gchar *description )
   { if (!agent_classe || !agent_tech_id)
-     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR, "Error, agent_classe or agent_tech_id is missing" );
+     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR, "Error, agent_classe or agent_tech_id is missing" );
        return;
      }
     if (!description) description = "";
 
-    if (g_strcmp0 ( agent_tech_id, Agent->agent_tech_id ) == 0) return;/* On ne peut pas demarrer l'agent server sur lui-meme */
+    if (g_strcmp0 ( agent_tech_id, Agent_get_tech_id ( Agent ) ) == 0) return;/* On ne peut pas demarrer l'agent server sur lui-meme */
 
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Starting %s (class %s): %s",
+    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE, "Starting %s (class %s): %s",
           agent_tech_id, agent_classe, description );
 
     gchar chaine[256];
@@ -224,18 +224,18 @@
 
     gchar *path = g_find_program_in_path(chaine);
     if (!path)
-     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "package '%s' not found. Install in progress.", chaine );
-       Run_shell ( "sudo -n %s install -y abls-agent-%s", (Agent->is_apt ? "apt" : "dnf"), agent_classe );
+     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE, "package '%s' not found. Install in progress.", chaine );
+       Run_shell ( "sudo -n %s install -y abls-agent-%s", (Agent_is_apt ( Agent ) ? "apt" : "dnf"), agent_classe );
      } else g_free(path);
 
     if ( g_strcmp0 ( agent_classe, "audio" ) == 0 )                                 /* Pour les agents en mode systemd --user */
      { struct passwd *pwd = Agent_get_active_session ();
        if (!pwd)
-        { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+        { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
                 "Active session: No active session found. Cannot start %s (class %s): %s", agent_tech_id, agent_classe, description );
           return;
         }
-       Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,
+       Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
              "Active session found name = '%s' for user id '%d'", pwd->pw_name, pwd->pw_uid );
        Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
                    "sudo -n -E -u %s systemctl --user enable abls-agent-%s@%s",
@@ -248,7 +248,7 @@
      { Run_shell ( "sudo -n systemctl enable abls-agent-%s@%s", agent_classe, agent_tech_id );
        Run_shell ( "sudo -n systemctl start abls-agent-%s@%s", agent_classe, agent_tech_id );
      }
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Agent '%s' (class '%s') '%s' is starting",
+    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE, "Agent '%s' (class '%s') '%s' is starting",
           agent_tech_id, agent_classe, description );
     Agent_status_pop ( Agent, agent_status );
   }
@@ -260,7 +260,7 @@
  static gpointer Agent_start_thread ( gpointer user_data )
   { JsonNode *mqtt_api_message = user_data;
     if (!mqtt_api_message)
-     { Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_ERR, "Error, mqtt_api_message is NULL" );
+     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR, "Error, mqtt_api_message is NULL" );
        return(NULL);
      }
     Agent_start ( Json_get_string ( mqtt_api_message, "agent_classe" ),
@@ -294,43 +294,43 @@
     Agent = Agent_init ( argv[0], "server", ABLS_AGENT_SERVER_VERSION, 0, argc, argv );
 
                                                                                   /* Pour installer les agents sur le serveur */
-    Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/%s/START/+",   Agent->domain_uuid, Agent->agent_tech_id );
-    Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/%s/UPGRADE/+", Agent->domain_uuid, Agent->agent_tech_id );
-    Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/%s/RESTART/+", Agent->domain_uuid, Agent->agent_tech_id );
-    Mqtt_subscribe ( Agent->mqtt_api, "%s/AGENT/%s/STOP/+",    Agent->domain_uuid, Agent->agent_tech_id );
+    Agent_subscribe_mqtt_api ( Agent, "%s/AGENT/%s/START/+",   Agent_get_domain_uuid ( Agent ), Agent_get_tech_id ( Agent ) );
+    Agent_subscribe_mqtt_api ( Agent, "%s/AGENT/%s/UPGRADE/+", Agent_get_domain_uuid ( Agent ), Agent_get_tech_id ( Agent ) );
+    Agent_subscribe_mqtt_api ( Agent, "%s/AGENT/%s/RESTART/+", Agent_get_domain_uuid ( Agent ), Agent_get_tech_id ( Agent ) );
+    Agent_subscribe_mqtt_api ( Agent, "%s/AGENT/%s/STOP/+",    Agent_get_domain_uuid ( Agent ), Agent_get_tech_id ( Agent ) );
 
     Agent_is_ready ( Agent );
 
 
-    Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE,           /* Demarrage des agents locaux a activer */
-          "Starting %d local_agents", Json_array_get_length(Agent->api_config, "local_agents") );
-    Json_foreach_array_element ( Agent->api_config, "local_agents", Agent_Start_by_array, NULL );
+    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,       /* Demarrage des agents locaux */
+          "Starting %d local_agents", Agent_config_get_array_length ( Agent, "local_agents" ) );
+    Agent_config_foreach_array_element ( Agent, "local_agents", Agent_Start_by_array, NULL );
 
-    while(Agent->Agent_run == AGENT_IS_RUNNING)                                              /* On tourne tant que necessaire */
+    while(Agent_is_running ( Agent ))                                                        /* On tourne tant que necessaire */
      { Agent_loop ( Agent );                                             /* Loop sur l'agent pour mettre a jour la telemetrie */
 /****************************************************** Ecoute de l'api *******************************************************/
        JsonNode *mqtt_api_message;
        while ( (mqtt_api_message = Agent_get_mqtt_api_message ( Agent ) ) != NULL )
-        { if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", Agent->agent_tech_id, "TEST" ) )
-           { Info(__func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "Agent Test from API."); }
+        { if ( Mqtt_topic_is ( mqtt_api_message, 4, "+", "AGENT", Agent_get_tech_id ( Agent ), "TEST" ) )
+           { Info(__func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE, "Agent Test from API."); }
 /*------------------------------------------------------------ Start ---------------------------------------------------------*/
-          else if ( Mqtt_topic_is ( mqtt_api_message, 5, "+", "AGENT", Agent->agent_tech_id, "START", "+" ) )
+          else if ( Mqtt_topic_is ( mqtt_api_message, 5, "+", "AGENT", Agent_get_tech_id ( Agent ), "START", "+" ) )
            { Json_ref ( mqtt_api_message );
              Run_thread_detached ( "Start one agent", Agent_start_thread, mqtt_api_message );
            }
-          else if ( Mqtt_topic_is ( mqtt_api_message, 5, "+", "AGENT", Agent->agent_tech_id, "STOP", "+" ) )
+          else if ( Mqtt_topic_is ( mqtt_api_message, 5, "+", "AGENT", Agent_get_tech_id ( Agent ), "STOP", "+" ) )
            { Json_ref ( mqtt_api_message );
              Run_thread_detached ( "Stopping agent", Agent_stop_thread, mqtt_api_message );
            }
-          else if ( Mqtt_topic_is ( mqtt_api_message, 5, "+", "AGENT", Agent->agent_tech_id, "RESTART", "+" ) )
+          else if ( Mqtt_topic_is ( mqtt_api_message, 5, "+", "AGENT", Agent_get_tech_id ( Agent ), "RESTART", "+" ) )
            { Json_ref ( mqtt_api_message );
              Run_thread_detached ( "Restarting agent", Agent_restart_thread, mqtt_api_message );
            }
-          else if ( Mqtt_topic_is ( mqtt_api_message, 5, "+", "AGENT", Agent->agent_tech_id, "UPGRADE", "+" ) )
+          else if ( Mqtt_topic_is ( mqtt_api_message, 5, "+", "AGENT", Agent_get_tech_id ( Agent ), "UPGRADE", "+" ) )
            { Json_ref ( mqtt_api_message );
              Run_thread_detached ( "Upgrading agent", Agent_upgrade_thread, mqtt_api_message );
            }
-          else Info( __func__, Agent->agent_classe, Agent->agent_tech_id, LOG_NOTICE, "API sent unknown command %s", Json_get_string ( mqtt_api_message, "mqtt_topic" ) );
+          else Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE, "API sent unknown command %s", Json_get_string ( mqtt_api_message, "mqtt_topic" ) );
           Json_unref (mqtt_api_message);
         }
      }
