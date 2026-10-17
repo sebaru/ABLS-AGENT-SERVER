@@ -125,9 +125,13 @@
     if (!description) description = "";
 
     gpointer agent_status = Agent_status_push ( Agent, "Restarting %s@%s", agent_classe, agent_tech_id );
-    if ( g_strcmp0 ( agent_tech_id, Agent_get_tech_id ( Agent ) ) == 0 )                               /* Arret du server lui même ? */
+    if ( g_strcmp0 ( agent_tech_id, Agent_get_tech_id ( Agent ) ) == 0 )                        /* Arret du server lui même ? */
      { Run_shell ( "sudo -n systemctl enable abls-agent-server" );
        Run_shell_detached ( "sudo -n systemctl restart abls-agent-server" );
+     }
+    else if ( g_strcmp0 ( agent_classe, "DLS" ) == 0 )                                             /* Arret du dls lui même ? */
+     { Run_shell ( "sudo -n systemctl enable abls-agent-dls" );
+       Run_shell_detached ( "sudo -n systemctl restart abls-agent-dls" );
      }
     else if ( g_strcmp0 ( agent_classe, "audio" ) == 0 )                            /* Pour les agents en mode systemd --user */
      { struct passwd *pwd = Agent_get_active_session ();
@@ -184,12 +188,16 @@
      { Run_shell ( "sudo -n apt update" );
        if ( g_strcmp0 ( agent_tech_id, Agent_get_tech_id ( Agent ) ) == 0 )                            /* Arret du server lui même ? */
             { Run_shell ( "sudo -n apt upgrade -y abls-agent-server" ); }
+       else if ( g_strcmp0 ( agent_classe, "DLS" ) == 0 )                                             /* Arret du dls lui même ? */
+            { Run_shell ( "sudo -n apt upgrade -y abls-agent-dls" ); }
        else { Run_shell ( "sudo -n apt upgrade -y abls-agent-%s", agent_classe ); }
      }
     else
      { if ( g_strcmp0 ( agent_tech_id, Agent_get_tech_id ( Agent ) ) == 0 )                            /* Arret du server lui même ? */
-            { Run_shell ( "sudo -n dnf upgrade abls-agent-server" ); }
-       else { Run_shell ( "sudo -n dnf upgrade abls-agent-%s", agent_classe ); }
+            { Run_shell ( "sudo -n dnf upgrade -y abls-agent-server" ); }
+       else if ( g_strcmp0 ( agent_classe, "DLS" ) == 0 )                                             /* Arret du dls lui même ? */
+            { Run_shell ( "sudo -n dnf upgrade -y abls-agent-dls" ); }
+       else { Run_shell ( "sudo -n dnf upgrade -y abls-agent-%s", agent_classe ); }
      }
     Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
           "Agent '%s' (class '%s') upgraded, Restarting.", agent_tech_id, agent_classe );
@@ -245,8 +253,14 @@
                     pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id );
      }
     else                                                                                         /* Agent sans session active */
-     { Run_shell ( "sudo -n systemctl enable abls-agent-%s@%s", agent_classe, agent_tech_id );
-       Run_shell ( "sudo -n systemctl start abls-agent-%s@%s", agent_classe, agent_tech_id );
+     { if ( g_strcmp0 ( agent_classe, "DLS" ) == 0 )                                             /* Arret du dls lui même ? */
+        { Run_shell ( "sudo -n systemctl enable abls-agent-dls" );
+          Run_shell ( "sudo -n systemctl start abls-agent-dls" );
+        }
+       else
+        { Run_shell ( "sudo -n systemctl enable abls-agent-%s@%s", agent_classe, agent_tech_id );
+          Run_shell ( "sudo -n systemctl start abls-agent-%s@%s", agent_classe, agent_tech_id );
+        }
      }
     Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE, "Agent '%s' (class '%s') '%s' is starting",
           agent_tech_id, agent_classe, description );
