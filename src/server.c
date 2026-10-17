@@ -305,6 +305,7 @@
     Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,       /* Demarrage des agents locaux */
           "Starting %d local_agents", Agent_config_get_array_length ( Agent, "local_agents" ) );
     Agent_config_foreach_array_element ( Agent, "local_agents", Agent_Start_by_array, NULL );
+    Agent_send_comm_to_master ( Agent, TRUE );
 
     while(Agent_is_running ( Agent ))                                                        /* On tourne tant que necessaire */
      { Agent_loop ( Agent );                                             /* Loop sur l'agent pour mettre a jour la telemetrie */
