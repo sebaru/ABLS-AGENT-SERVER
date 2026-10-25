@@ -35,12 +35,13 @@
 /* Entrée: néant                                                                                                              */
 /* Sortie: la structure passwd du user connecté, le cas échéant                                                               */
 /******************************************************************************************************************************/
- static struct passwd *Agent_get_active_session ( void )
+ static struct passwd *Agent_get_active_session ( gchar *fallback_user )
   { gchar *session;
     uid_t active_session;
     if (sd_seat_get_active( "seat0", &session, &active_session) < 0) return(NULL);
     g_free(session);
     struct passwd *pwd = getpwuid ( active_session );
+    if (!pwd && fallback_user) { pwd = getpwnam ( fallback_user ); }
     return(pwd);
   }
 /******************************************************************************************************************************/
@@ -48,56 +49,140 @@
 /* Entrée: La structure afférente                                                                                             */
 /* Sortie: néant                                                                                                              */
 /******************************************************************************************************************************/
- static gpointer Agent_stop_thread ( gpointer user_data )
-  { JsonNode *mqtt_api_message = user_data;
-    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE, "Stopping one agent." );
-    if (!mqtt_api_message)
-     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR, "Error, mqtt_api_message is NULL" );
-       return(NULL);
-     }
-
-    gchar *agent_classe  = Json_get_string ( mqtt_api_message, "agent_classe" );
-    gchar *agent_tech_id = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl4" );
-    if (agent_classe == NULL || agent_tech_id == NULL)
+ static gboolean Agent_stop_one ( gchar *agent_classe, gchar *agent_tech_id, gchar *description )
+  { if (!agent_classe || !agent_tech_id)
      { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR,
-             "Error, agent_classe or agent_tech_id is missing in mqtt_api_message" );
-       Json_unref ( mqtt_api_message );
-       return(NULL);
+             "Error, agent_classe or agent_tech_id is missing" );
+       return(FALSE);
      }
-    gchar *description = Json_get_string ( mqtt_api_message, "description" );
     if (!description) description = "";
 
+    gboolean success = FALSE;
     gpointer agent_status = Agent_status_push ( Agent, "Stopping %s@%s", agent_classe, agent_tech_id );
     if ( g_strcmp0 ( agent_tech_id, Agent_get_tech_id ( Agent ) ) == 0 )                               /* Arret du server lui même ? */
      { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_CRIT,
              "Server is shuting down. It can only be restarted manually." );
-       Run_shell ( "sudo -n systemctl disable abls-agent-server" );
+       if (Run_shell ( "sudo -n systemctl disable abls-agent-server" ) != 0) goto end;
        Run_shell_detached ( "sudo -n systemctl stop abls-agent-server" );
      }
+    else if ( g_strcmp0 ( agent_classe, "DLS" ) == 0 )
+     { if (Run_shell ( "sudo -n systemctl disable abls-agent-dls" ) != 0) goto end;
+       if (Run_shell ( "sudo -n systemctl stop abls-agent-dls" ) != 0) goto end;
+     }
     else if ( g_strcmp0 ( agent_classe, "audio" ) == 0 )                            /* Pour les agents en mode systemd --user */
-     { struct passwd *pwd = Agent_get_active_session ();
+     { struct passwd *pwd = Agent_get_active_session ( "abls-agent-audio");
        if (!pwd)
-        { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
-                "Active session: No active session found. Cannot stop %s (class %s): %s", agent_tech_id, agent_classe, description );
-          return(NULL);
+        { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR,
+                "Active session: No 'abls-agent-audio' session found for  %s (class %s): %s",
+                agent_tech_id, agent_classe, description );
+          goto end;
         }
        Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
              "Active session found name = '%s' for user id '%d'", pwd->pw_name, pwd->pw_uid );
-       Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
+       if (Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
                    "sudo -n -E -u %s systemctl --user disable abls-agent-%s@%s",
-                    pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id );
-       Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
+                    pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id ) != 0) goto end;
+       if (Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
                    "sudo -n -E -u %s systemctl --user stop abls-agent-%s@%s",
-                    pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id );
+                    pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id ) != 0) goto end;
      }
     else                                                              /* Pour tous les autres agents en mode systemctl direct */
-     { Run_shell ( "sudo -n systemctl disable abls-agent-%s@%s", agent_classe, agent_tech_id );
-       Run_shell ( "sudo -n systemctl stop    abls-agent-%s@%s", agent_classe, agent_tech_id );
+     { if (Run_shell ( "sudo -n systemctl disable abls-agent-%s@%s", agent_classe, agent_tech_id ) != 0) goto end;
+       if (Run_shell ( "sudo -n systemctl stop    abls-agent-%s@%s", agent_classe, agent_tech_id ) != 0) goto end;
      }
+    success = TRUE;
     Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
           "Agent '%s' (class '%s') stopped", agent_tech_id, agent_classe );
-    Json_unref ( mqtt_api_message );
+end:
+    if (!success)
+     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR,
+             "Failed to stop agent '%s' (class '%s')", agent_tech_id, agent_classe );
+     }
     Agent_status_pop ( Agent, agent_status );
+    return(success);
+  }
+/******************************************************************************************************************************/
+/* Start_one_agent: Installe et demarre un agent classe/tech_id en parametre                                                  */
+/* Entrée: agent, agent_classe, agent_tech_id                                                                                 */
+/* Sortie: aucune                                                                                                             */
+/******************************************************************************************************************************/
+ static gboolean Agent_start_one ( gchar *agent_classe, gchar *agent_tech_id, gchar *description )
+  { if (!agent_classe || !agent_tech_id)
+     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR, "Error, agent_classe or agent_tech_id is missing" );
+       return(FALSE);
+     }
+    if (!description) description = "";
+
+     if (g_strcmp0 ( agent_tech_id, Agent_get_tech_id ( Agent ) ) == 0) return(FALSE);/* On ne peut pas demarrer l'agent server sur lui-meme */
+
+    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE, "Starting %s (class %s): %s",
+          agent_tech_id, agent_classe, description );
+
+    gchar chaine[256];
+    g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", agent_classe );
+
+    gboolean success = FALSE;
+    gpointer agent_status = Agent_status_push ( Agent, "Starting %s@%s", agent_classe, agent_tech_id );
+
+    gchar *path = g_find_program_in_path(chaine);
+    if (!path)
+     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE, "package '%s' not found. Install in progress.", chaine );
+      if (Run_shell ( "sudo -n %s install -y abls-agent-%s", (Agent_is_apt ( Agent ) ? "apt" : "dnf"), agent_classe ) != 0) goto end;
+     } else g_free(path);
+
+    if ( g_strcmp0 ( agent_classe, "audio" ) == 0 )                                 /* Pour les agents en mode systemd --user */
+     { struct passwd *pwd = Agent_get_active_session ( "abls-agent-audio");
+       if (!pwd)
+        { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR,
+                "Active session: No active session nor 'abls-agent-audio' session found for  %s (class %s): %s",
+                agent_tech_id, agent_classe, description );
+          goto end;
+        }
+       Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
+             "Active session found name = '%s' for user id '%d'", pwd->pw_name, pwd->pw_uid );
+      if (Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
+                      "sudo -n -E -u %s systemctl --user enable abls-agent-%s@%s",
+                      pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id ) != 0) goto end;
+      if (Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
+                      "sudo -n -E -u %s systemctl --user start abls-agent-%s@%s",
+                      pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id ) != 0) goto end;
+     }
+    else                                                                                         /* Agent sans session active */
+     { if ( g_strcmp0 ( agent_classe, "DLS" ) == 0 )                                             /* Arret du dls lui même ? */
+        { if (Run_shell ( "sudo -n systemctl enable abls-agent-dls" ) != 0) goto end;
+          if (Run_shell ( "sudo -n systemctl start abls-agent-dls" ) != 0) goto end;
+        }
+       else
+        { if (Run_shell ( "sudo -n systemctl enable abls-agent-%s@%s", agent_classe, agent_tech_id ) != 0) goto end;
+          if (Run_shell ( "sudo -n systemctl start abls-agent-%s@%s", agent_classe, agent_tech_id ) != 0) goto end;
+        }
+     }
+    success = TRUE;
+    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE, "Agent '%s' (class '%s') '%s' is starting",
+          agent_tech_id, agent_classe, description );
+  end:
+    if (!success)
+     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR,
+         "Failed to start agent '%s' (class '%s')", agent_tech_id, agent_classe );
+     }
+    Agent_status_pop ( Agent, agent_status );
+    return(success);
+  }
+/******************************************************************************************************************************/
+/* Agent_stop_thread: arrête un agent depuis une demande de l'API                                                              */
+/* Entrée: le message MQTT de l'API                                                                                           */
+/* Sortie: NULL                                                                                                              */
+/******************************************************************************************************************************/
+ static gpointer Agent_stop_thread ( gpointer user_data )
+  { JsonNode *mqtt_api_message = user_data;
+    if (!mqtt_api_message)
+     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR, "Error, mqtt_api_message is NULL" );
+       return(NULL);
+     }
+    Agent_stop_one ( Json_get_string ( mqtt_api_message, "agent_classe" ),
+                     Mqtt_get_topic_lvl ( mqtt_api_message, 4 ),
+                     Json_get_string ( mqtt_api_message, "description" ) );
+    Json_unref ( mqtt_api_message );
     return(NULL);
   }
 /******************************************************************************************************************************/
@@ -105,58 +190,53 @@
 /* Entrée: La structure afférente                                                                                             */
 /* Sortie: néant                                                                                                              */
 /******************************************************************************************************************************/
+ static gboolean Agent_restart_one ( gchar *agent_classe, gchar *agent_tech_id, gchar *description )
+  { if (!agent_classe || !agent_tech_id)
+     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR,
+             "Error, agent_classe or agent_tech_id is missing" );
+       return(FALSE);
+     }
+
+    gboolean success = FALSE;
+    gpointer agent_status = Agent_status_push ( Agent, "Restarting %s@%s", agent_classe, agent_tech_id );
+    if ( g_strcmp0 ( agent_tech_id, Agent_get_tech_id ( Agent ) ) == 0 )                        /* Arret du server lui même ? */
+     { if (Run_shell ( "sudo -n systemctl enable abls-agent-server" ) != 0) goto end;
+       Run_shell_detached ( "sudo -n systemctl restart abls-agent-server" );
+       success = TRUE;
+       Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
+             "Server restart requested" );
+     }
+    else
+     { success = Agent_stop_one  ( agent_classe, agent_tech_id, description ) &&
+                 Agent_start_one ( agent_classe, agent_tech_id, description );
+       if (success)
+        { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
+                "Agent '%s' (class '%s') restarted", agent_tech_id, agent_classe );
+        }
+     }
+end:
+    if (!success)
+     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR,
+             "Failed to restart agent '%s' (class '%s')", agent_tech_id, agent_classe );
+     }
+    Agent_status_pop ( Agent, agent_status );
+    return(success);
+  }
+/******************************************************************************************************************************/
+/* Agent_restart_thread: redémarre un agent depuis une demande de l'API                                                       */
+/* Entrée: le message MQTT de l'API                                                                                           */
+/* Sortie: NULL                                                                                                               */
+/******************************************************************************************************************************/
  static gpointer Agent_restart_thread ( gpointer user_data )
   { JsonNode *mqtt_api_message = user_data;
-    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE, "Restarting one agent." );
     if (!mqtt_api_message)
      { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR, "Error, mqtt_api_message is NULL" );
        return(NULL);
      }
-
-    gchar *agent_classe  = Json_get_string ( mqtt_api_message, "agent_classe" );
-    gchar *agent_tech_id = Json_get_string ( mqtt_api_message, "mqtt_topic_lvl4" );
-    if (agent_classe == NULL || agent_tech_id == NULL)
-     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR,
-             "Error, agent_classe or agent_tech_id is missing in mqtt_api_message" );
-       Json_unref ( mqtt_api_message );
-       return(NULL);
-     }
-    gchar *description = Json_get_string ( mqtt_api_message, "description" );
-    if (!description) description = "";
-
-    gpointer agent_status = Agent_status_push ( Agent, "Restarting %s@%s", agent_classe, agent_tech_id );
-    if ( g_strcmp0 ( agent_tech_id, Agent_get_tech_id ( Agent ) ) == 0 )                        /* Arret du server lui même ? */
-     { Run_shell ( "sudo -n systemctl enable abls-agent-server" );
-       Run_shell_detached ( "sudo -n systemctl restart abls-agent-server" );
-     }
-    else if ( g_strcmp0 ( agent_classe, "DLS" ) == 0 )                                             /* Arret du dls lui même ? */
-     { Run_shell ( "sudo -n systemctl enable abls-agent-dls" );
-       Run_shell_detached ( "sudo -n systemctl restart abls-agent-dls" );
-     }
-    else if ( g_strcmp0 ( agent_classe, "audio" ) == 0 )                            /* Pour les agents en mode systemd --user */
-     { struct passwd *pwd = Agent_get_active_session ();
-       if (!pwd)
-        { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
-                "Active session: No active session found. Cannot restart %s (class %s): %s", agent_tech_id, agent_classe, description );
-          return(NULL);
-        }
-       Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
-             "Active session found name = '%s' for user id '%d'", pwd->pw_name, pwd->pw_uid );
-       Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
-                   "sudo -n -E -u %s systemctl --user enable abls-agent-%s@%s",
-                    pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id );
-       Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
-                   "sudo -n -E -u %s systemctl --user restart abls-agent-%s@%s",
-                    pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id );
-     }
-    else                                                              /* Pour tous les autres agents en mode systemctl direct */
-     { Run_shell ( "sudo -n systemctl enable abls-agent-%s@%s", agent_classe, agent_tech_id );
-       Run_shell ( "sudo -n systemctl restart abls-agent-%s@%s", agent_classe, agent_tech_id );
-     }
-    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
-          "Agent '%s' (class '%s') restarted", agent_tech_id, agent_classe );
+    Agent_restart_one ( Json_get_string ( mqtt_api_message, "agent_classe" ),
+                        Mqtt_get_topic_lvl ( mqtt_api_message, 4 ),
+                        Json_get_string ( mqtt_api_message, "description" ) );
     Json_unref ( mqtt_api_message );
-    Agent_status_pop ( Agent, agent_status );
     return(NULL);
   }
 /******************************************************************************************************************************/
@@ -201,75 +281,13 @@
      }
     Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
           "Agent '%s' (class '%s') upgraded, Restarting.", agent_tech_id, agent_classe );
-    Agent_restart_thread ( user_data );
-    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
-          "Agent '%s' (class '%s') upgraded and restarted", agent_tech_id, agent_classe );
+        if (Agent_restart_one ( agent_classe, agent_tech_id, description ))
+         { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
+           "Agent '%s' (class '%s') upgraded, restart request completed", agent_tech_id, agent_classe );
+         }
     Json_unref ( mqtt_api_message );
     Agent_status_pop ( Agent, agent_status );
     return(NULL);
-  }
-/******************************************************************************************************************************/
-/* Start_one_agent: Installe et demarre un agent classe/tech_id en parametre                                                  */
-/* Entrée: agent, agent_classe, agent_tech_id                                                                                 */
-/* Sortie: aucune                                                                                                             */
-/******************************************************************************************************************************/
- static void Agent_start ( gchar *agent_classe, gchar *agent_tech_id, gchar *description )
-  { if (!agent_classe || !agent_tech_id)
-     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR, "Error, agent_classe or agent_tech_id is missing" );
-       return;
-     }
-    if (!description) description = "";
-
-    if (g_strcmp0 ( agent_tech_id, Agent_get_tech_id ( Agent ) ) == 0) return;/* On ne peut pas demarrer l'agent server sur lui-meme */
-
-    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE, "Starting %s (class %s): %s",
-          agent_tech_id, agent_classe, description );
-
-    gchar chaine[256];
-    g_snprintf ( chaine, sizeof(chaine), "abls-agent-%s", agent_classe );
-
-    gpointer agent_status = Agent_status_push ( Agent, "Starting %s@%s", agent_classe, agent_tech_id );
-
-    gchar *path = g_find_program_in_path(chaine);
-    if (!path)
-     { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE, "package '%s' not found. Install in progress.", chaine );
-       Run_shell ( "sudo -n %s install -y abls-agent-%s", (Agent_is_apt ( Agent ) ? "apt" : "dnf"), agent_classe );
-     } else g_free(path);
-
-    if ( g_strcmp0 ( agent_classe, "audio" ) == 0 )                                 /* Pour les agents en mode systemd --user */
-     { struct passwd *pwd = Agent_get_active_session ();
-       if (!pwd)
-        { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
-                "Active session: No 'seat0' session found for %s (class %s): %s", agent_tech_id, agent_classe, description );
-          pwd = getpwnam("abls-agent-audio");
-          if (!pwd)
-           { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR,
-                   "Active session: No 'abls-agent-audio' session found for  %s (class %s): %s", agent_tech_id, agent_classe, description );
-             return;
-           }
-        }
-       Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
-             "Active session found name = '%s' for user id '%d'", pwd->pw_name, pwd->pw_uid );
-       Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
-                   "sudo -n -E -u %s systemctl --user enable abls-agent-%s@%s",
-                    pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id );
-       Run_shell ( "env XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus "
-                   "sudo -n -E -u %s systemctl --user start abls-agent-%s@%s",
-                    pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id );
-     }
-    else                                                                                         /* Agent sans session active */
-     { if ( g_strcmp0 ( agent_classe, "DLS" ) == 0 )                                             /* Arret du dls lui même ? */
-        { Run_shell ( "sudo -n systemctl enable abls-agent-dls" );
-          Run_shell ( "sudo -n systemctl start abls-agent-dls" );
-        }
-       else
-        { Run_shell ( "sudo -n systemctl enable abls-agent-%s@%s", agent_classe, agent_tech_id );
-          Run_shell ( "sudo -n systemctl start abls-agent-%s@%s", agent_classe, agent_tech_id );
-        }
-     }
-    Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE, "Agent '%s' (class '%s') '%s' is starting",
-          agent_tech_id, agent_classe, description );
-    Agent_status_pop ( Agent, agent_status );
   }
 /******************************************************************************************************************************/
 /* Start_one_agent_by_api_message_thread: Lance un agent depuis une demande de l'API                                          */
@@ -282,9 +300,9 @@
      { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR, "Error, mqtt_api_message is NULL" );
        return(NULL);
      }
-    Agent_start ( Json_get_string ( mqtt_api_message, "agent_classe" ),
-                  Mqtt_get_topic_lvl ( mqtt_api_message, 4 ),
-                  Json_get_string ( mqtt_api_message, "description" ) );
+    Agent_start_one ( Json_get_string ( mqtt_api_message, "agent_classe" ),
+                      Mqtt_get_topic_lvl ( mqtt_api_message, 4 ),
+                      Json_get_string ( mqtt_api_message, "description" ) );
     Json_unref ( mqtt_api_message );
     return(NULL);
   }
@@ -298,7 +316,7 @@
     gchar *agent_classe  = Json_get_string ( element, "agent_classe" );
     gchar *agent_tech_id = Json_get_string ( element, "agent_tech_id" );
     gchar *description   = Json_get_string ( element, "description" );
-    Agent_start ( agent_classe, agent_tech_id, description );
+    Agent_start_one ( agent_classe, agent_tech_id, description );
   }
 /******************************************************************************************************************************/
 /* main: Prend en charge l'agent                                                                                              */
