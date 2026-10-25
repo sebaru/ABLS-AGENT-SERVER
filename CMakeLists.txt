@@ -63,6 +63,24 @@ target_link_libraries(abls-agent-server PRIVATE
   ${SYSTEMD_LIBRARIES}
 )
 
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(server-restart-test tests/restart.c)
+  target_include_directories(server-restart-test PRIVATE
+    $<TARGET_PROPERTY:abls-agent-server,INCLUDE_DIRECTORIES>
+  )
+  target_compile_options(server-restart-test PRIVATE
+    $<TARGET_PROPERTY:abls-agent-server,COMPILE_OPTIONS>
+  )
+  target_compile_definitions(server-restart-test PRIVATE
+    $<TARGET_PROPERTY:abls-agent-server,COMPILE_DEFINITIONS>
+  )
+  target_link_libraries(server-restart-test PRIVATE
+    $<TARGET_PROPERTY:abls-agent-server,LINK_LIBRARIES>
+  )
+  add_test(NAME server-restart COMMAND server-restart-test)
+endif()
+
 install(TARGETS abls-agent-server
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
 )
