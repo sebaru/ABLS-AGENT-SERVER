@@ -240,8 +240,13 @@
      { struct passwd *pwd = Agent_get_active_session ();
        if (!pwd)
         { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
-                "Active session: No active session found. Cannot start %s (class %s): %s", agent_tech_id, agent_classe, description );
-          return;
+                "Active session: No 'seat0' session found for %s (class %s): %s", agent_tech_id, agent_classe, description );
+          pwd = getpwnam("abls-agent-audio");
+          if (!pwd)
+           { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR,
+                   "Active session: No 'abls-agent-audio' session found for  %s (class %s): %s", agent_tech_id, agent_classe, description );
+             return;
+           }
         }
        Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_NOTICE,
              "Active session found name = '%s' for user id '%d'", pwd->pw_name, pwd->pw_uid );
@@ -278,7 +283,7 @@
        return(NULL);
      }
     Agent_start ( Json_get_string ( mqtt_api_message, "agent_classe" ),
-                  Json_get_string ( mqtt_api_message, "mqtt_topic_lvl4" ),
+                  Mqtt_get_topic_lvl ( mqtt_api_message, 4 ),
                   Json_get_string ( mqtt_api_message, "description" ) );
     Json_unref ( mqtt_api_message );
     return(NULL);
