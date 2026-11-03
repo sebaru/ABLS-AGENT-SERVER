@@ -65,7 +65,7 @@
        if (Run_shell ( "sudo -n systemctl disable abls-agent-server" ) != 0) goto end;
        Run_shell_detached ( "sudo -n systemctl stop abls-agent-server" );
      }
-    else if ( g_strcmp0 ( agent_classe, "DLS" ) == 0 )
+    else if ( g_strcmp0 ( agent_classe, "dls" ) == 0 )
      { if (Run_shell ( "sudo -n systemctl disable abls-agent-dls" ) != 0) goto end;
        if (Run_shell ( "sudo -n systemctl stop abls-agent-dls" ) != 0) goto end;
      }
@@ -148,7 +148,7 @@ end:
                       pwd->pw_uid, pwd->pw_uid, pwd->pw_name, agent_classe, agent_tech_id ) != 0) goto end;
      }
     else                                                                                         /* Agent sans session active */
-     { if ( g_strcmp0 ( agent_classe, "DLS" ) == 0 )                                             /* Arret du dls lui même ? */
+     { if ( g_strcmp0 ( agent_classe, "dls" ) == 0 )                                             /* Arret du dls lui même ? */
         { if (Run_shell ( "sudo -n systemctl enable abls-agent-dls" ) != 0) goto end;
           if (Run_shell ( "sudo -n systemctl start abls-agent-dls" ) != 0) goto end;
         }
@@ -268,14 +268,14 @@ end:
      { Run_shell ( "sudo -n apt update" );
        if ( g_strcmp0 ( agent_tech_id, Agent_get_tech_id ( Agent ) ) == 0 )                            /* Arret du server lui même ? */
             { Run_shell ( "sudo -n apt upgrade -y abls-agent-server" ); }
-       else if ( g_strcmp0 ( agent_classe, "DLS" ) == 0 )                                             /* Arret du dls lui même ? */
+       else if ( g_strcmp0 ( agent_classe, "dls" ) == 0 )                                             /* Arret du dls lui même ? */
             { Run_shell ( "sudo -n apt upgrade -y abls-agent-dls" ); }
        else { Run_shell ( "sudo -n apt upgrade -y abls-agent-%s", agent_classe ); }
      }
     else
      { if ( g_strcmp0 ( agent_tech_id, Agent_get_tech_id ( Agent ) ) == 0 )                            /* Arret du server lui même ? */
             { Run_shell ( "sudo -n dnf upgrade -y abls-agent-server" ); }
-       else if ( g_strcmp0 ( agent_classe, "DLS" ) == 0 )                                             /* Arret du dls lui même ? */
+       else if ( g_strcmp0 ( agent_classe, "dls" ) == 0 )                                             /* Arret du dls lui même ? */
             { Run_shell ( "sudo -n dnf upgrade -y abls-agent-dls" ); }
        else { Run_shell ( "sudo -n dnf upgrade -y abls-agent-%s", agent_classe ); }
      }
