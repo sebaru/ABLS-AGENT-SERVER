@@ -36,11 +36,12 @@
 /* Sortie: la structure passwd du user connecté, le cas échéant                                                               */
 /******************************************************************************************************************************/
  static struct passwd *Agent_get_active_session ( gchar *fallback_user )
-  { gchar *session;
+  { gchar *session = NULL;
     uid_t active_session;
-    if (sd_seat_get_active( "seat0", &session, &active_session) < 0) return(NULL);
+    struct passwd *pwd = NULL;
+    if (sd_seat_get_active("seat0", &session, &active_session) >= 0)
+     { pwd = getpwuid ( active_session ); }
     g_free(session);
-    struct passwd *pwd = getpwuid ( active_session );
     if (!pwd && fallback_user) { pwd = getpwnam ( fallback_user ); }
     return(pwd);
   }
@@ -134,7 +135,7 @@ end:
      { struct passwd *pwd = Agent_get_active_session ( "abls-agent-audio");
        if (!pwd)
         { Info( __func__, Agent_get_classe ( Agent ), Agent_get_tech_id ( Agent ), LOG_ERR,
-                "Active session: No active session nor 'abls-agent-audio' session found for  %s (class %s): %s",
+                "Active session: No active seat0 session or 'abls-agent-audio' user found for %s (class %s): %s",
                 agent_tech_id, agent_classe, description );
           goto end;
         }
